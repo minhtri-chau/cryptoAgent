@@ -10,5 +10,5 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $At
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Register-ScheduledTask -TaskName "cryptoAgent daily collect" -Action $action -Trigger $trigger -Settings $settings `
-    -Description "Crypto agent: daily public candle collection and quality checks (no AI)" -Force | Out-Null
+    -Description "Crypto agent: daily candles, quality checks, prediction scoring and report (no AI)" -Force | Out-Null
 Get-ScheduledTask -TaskName "cryptoAgent daily collect" | Select-Object TaskName, State

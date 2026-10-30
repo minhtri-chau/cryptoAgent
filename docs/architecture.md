@@ -142,6 +142,48 @@ At the end of each phase, commit and add an annotated tag (`v0.N`).
 
 Out of scope for v0.1: indicators, backtests, recommendations, subagents and ML.
 
+## v0.2 design
+
+- **Indicators** (`quant/indicators.py`): pure functions over a daily OHLCV frame.
+  - SMA, EMA, RSI, MACD, ATR, Bollinger bands, ADX, OBV, rate of change, realised volatility, drawdown from all-time high, deviation from a moving average, and confirmed pivot highs and lows.
+  - A pivot is only known k bars after it happens, so it is reported on its confirmation day, never back-dated.
+  - TA-Lib is a test-only reference. Our implementations are plain pandas, so the formula is readable and owned.
+- **BTC series:** regime and cycle analysis use `bitstamp:BTC/USD` (one venue from 2011-08-18, no splice). Coinbase BTC/USD is the tradable series that predictions are made and scored on.
+- **Regime `regime-v1`** (`quant/regime.py`): descriptive labels, not trade rules. Thresholds are explicit constants, and any change to them is a new version.
+  - Trend: close vs SMA200 and the sign of SMA200's 20-day change → `uptrend` / `downtrend` / `transition`.
+  - Volatility: 30-day realised volatility percentile within all prior history → `low` (<33rd) / `normal` / `high` (>67th).
+  - Drawdown from the all-time high, and deviation from EMA200, including whether the −37.5/−60/−75% bands are reached.
+  - Halving cycle: days since the last halving and the cycle number. Halvings at blocks 210,000/420,000/630,000/840,000 were checked against mempool.space block timestamps.
+- **Prediction ledger** (migration 002): append-only `predictions` and `outcomes`.
+  - A prediction is "probability that the close at as-of + h days is above the as-of close".
+  - The as-of candle is always the latest stored complete candle when the prediction is made, so predictions cannot be back-dated.
+  - `source = model | judgment`.
+  - A close exactly equal to the as-of close counts as not up.
+- **Baseline models**, recorded daily for `coinbase:BTC/USD` at 7/30/90/365 days, which starts the forward-test clock:
+  - `base_rate_v1`: the share of all past windows of the same length that ended up, using only windows that ended on or before the as-of day.
+  - `base_rate_trend_v1`: the same, restricted to windows that started in the same `regime-v1` trend label.
+- **Scorecard** for each source, model and horizon:
+  - Brier score, and Brier skill score vs `base_rate_v1` made on the same day.
+  - Calibration bins and hit rate.
+  - Resolved count, and an approximate independent count (non-overlapping windows), with a warning below 30.
+- **Daily report** (`reports/YYYY-MM-DD.md`), deterministic and with no AI:
+  - Data freshness and quality.
+  - BTC indicators and regime.
+  - Today's model predictions.
+  - The scorecard.
+
+## v0.2 acceptance criteria
+
+1. Every indicator that TA-Lib also has matches it after warm-up within 1e-6 relative. The others are checked against hand-worked values.
+2. Every indicator and regime field passes a causality test: values up to t don't change when bars after t are removed or replaced with garbage.
+3. `cryptoagent indicators SOURCE:SYMBOL` and `cryptoagent regime` print JSON for the latest day or for `--as-of` a past date, using only data available then.
+4. Predictions and outcomes are append-only, enforced by triggers. Predictions bind to the latest complete candle, and `evaluate` resolves them exactly at the horizon, never before.
+5. `predictions score` prints the scorecard with sample sizes and small-sample warnings.
+6. The daily task runs collect → quality → evaluate → baseline predictions → report, with no AI.
+7. The phase ends with a commit and an annotated `v0.2` tag.
+
+Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and altcoin screens.
+
 ## Main risks
 
 | Risk | Mitigation |

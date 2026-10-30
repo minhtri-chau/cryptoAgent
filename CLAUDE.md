@@ -32,7 +32,16 @@ v0.1 commands:
 - `markets [--source] [--status]`
 - `candles SOURCE:SYMBOL [--last N]`
 
-The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
+v0.2 commands:
+- `indicators SOURCE:SYMBOL [--as-of YYYY-MM-DD] [--last N]`
+- `regime [--market] [--as-of]`
+- `predict add --market --horizon --prob-up --by --rationale [--evidence JSON]`: records a judgment
+- `predict baselines`
+- `predictions list|score`
+- `evaluate`
+- `report` (writes `reports/YYYY-MM-DD.md`)
+
+The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality → evaluate → baselines → report) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
 
 Every command that reads data prints JSON. Validation errors exit with status 2. Pass `--db <path>` to run against a scratch database.
 
@@ -48,7 +57,16 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - `coinmetrics.py`: `PriceUSD` reference prices (CC BY-NC 4.0, attribution required), used only to cross-check closes.
 - **quality** (`quality.py`): checks for gaps, outlier returns and reference mismatches. It records findings and never alters data.
 - **store**: SQLite, defined by numbered SQL files in `src/cryptoagent/migrations/`. Add a new numbered file for every change; never edit one that has been applied. SQLite can't add a column with a non-constant default, so use a trigger.
-- **quant**: plain, tested Python. All arithmetic lives here, never in prompts.
+- **quant** (`src/cryptoagent/quant/`): plain, tested Python. All arithmetic lives here, never in prompts.
+  - `indicators.py`: TA-Lib-matching implementations; TA-Lib itself is a test-only reference. Pivots are reported on their confirmation day.
+  - `regime.py`: `regime-v1` descriptive labels. Its thresholds are its definition, so changing one means a new version that the user approves.
+  - `series.py`: loads candles as of a day.
+  - Every indicator and regime field has a no-look-ahead test (garbage future bars must not change past values). Keep that true for anything added.
+- **predictions** (`predictions.py`, migration 002): append-only ledger of P(close at as-of + h > close at as-of).
+  - A trigger binds each prediction to the latest stored candle, so nothing can be back-dated.
+  - Outcomes must use the stored target-day close.
+  - `source` is `model` (deterministic base rates, recorded daily) or `judgment` (Claude), and the scorecard compares each against `base_rate_v1`.
+- **report** (`report.py`): the deterministic daily report.
 - **reasoning**: Claude skills and subagents in `.claude/`. They read the CLI's JSON output and write back only through CLI commands, so another AI provider can drive the same CLI later.
 
 Secrets come from `.env` (gitignored) through `load_settings().secret("NAME")`, which returns a `Secret`. Use `.reveal()` only at the point of the HTTP call, and strip keys from any logged URL.

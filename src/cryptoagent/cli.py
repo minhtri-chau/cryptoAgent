@@ -13,9 +13,12 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import db, quality
+from cryptoagent import db, predictions, quality, report
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
+from cryptoagent.predictions import LedgerError
+from cryptoagent.quant import indicators, regime
+from cryptoagent.quant.series import UnknownMarket, load_daily
 
 
 class UsageError(Exception):
@@ -24,6 +27,10 @@ class UsageError(Exception):
 
 def _out(data) -> None:
     print(json.dumps(data, indent=2, default=str))
+
+
+def _jsonable(row) -> dict:
+    return {k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +60,39 @@ def build_parser() -> argparse.ArgumentParser:
     p = cmd.add_parser("candles", help="stored daily candles for one market")
     p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
     p.add_argument("--last", type=int, default=30, help="number of most recent candles")
+
+    p = cmd.add_parser("indicators", help="indicator values for one market (latest day, or as of a past day)")
+    p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
+    p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
+    p.add_argument("--last", type=int, default=1, help="number of most recent days")
+
+    p = cmd.add_parser("regime", help=f"{regime.VERSION} labels (descriptive, not trade signals)")
+    p.add_argument("--market", default=report.REGIME_MARKET)
+    p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
+
+    predict = cmd.add_parser("predict", help="record predictions").add_subparsers(dest="action", required=True)
+    p = predict.add_parser("add", help="record a judgment: P(close at as-of + horizon > close at as-of)")
+    p.add_argument("--market", required=True)
+    p.add_argument("--horizon", type=int, required=True, help="days")
+    p.add_argument("--prob-up", type=float, required=True)
+    p.add_argument("--by", dest="model", required=True, help="who made the judgment, e.g. claude")
+    p.add_argument("--rationale", required=True)
+    p.add_argument("--evidence", help="JSON object: the CLI outputs and figures the judgment rests on")
+    p = predict.add_parser("baselines", help="record today's deterministic base-rate predictions")
+    p.add_argument("--market", default=report.TRADE_MARKET)
+
+    preds = cmd.add_parser("predictions", help="the prediction ledger").add_subparsers(dest="action", required=True)
+    p = preds.add_parser("list")
+    p.add_argument("--status", choices=["open", "resolved", "unresolvable"])
+    p.add_argument("--source", choices=["model", "judgment"])
+    p.add_argument("--limit", type=int, default=50)
+    p = preds.add_parser("score", help="Brier, skill vs base rate, calibration, sample sizes")
+    p.add_argument("--market")
+
+    cmd.add_parser("evaluate", help="resolve predictions whose target day's candle is stored")
+
+    p = cmd.add_parser("report", help="write the deterministic daily report to reports/YYYY-MM-DD.md")
+    p.add_argument("--dir", default="reports")
     return parser
 
 
@@ -112,6 +152,29 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
             (_market_id(conn, args.market), args.last),
         ).fetchall()
         _out([dict(r) for r in reversed(rows)])
+    elif c == "indicators":
+        frame = indicators.compute_all(load_daily(conn, args.market, args.as_of)).tail(args.last)
+        _out([{"day": day.date().isoformat(), **_jsonable(row)} for day, row in frame.iterrows()])
+    elif c == "regime":
+        _out(regime.snapshot(load_daily(conn, args.market, args.as_of)))
+    elif c == "predict" and args.action == "add":
+        try:
+            evidence = json.loads(args.evidence) if args.evidence else None
+        except json.JSONDecodeError as exc:
+            raise UsageError(f"--evidence is not valid JSON: {exc}") from exc
+        pid = predictions.record(conn, args.market, args.horizon, args.prob_up, "judgment", args.model,
+                                 args.rationale, evidence)
+        _out(predictions.list_predictions(conn, limit=1)[0] | {"id": pid})
+    elif c == "predict" and args.action == "baselines":
+        _out(predictions.record_baselines(conn, args.market))
+    elif c == "predictions" and args.action == "list":
+        _out(predictions.list_predictions(conn, args.status, args.source, args.limit))
+    elif c == "predictions" and args.action == "score":
+        _out(predictions.scorecard(conn, args.market))
+    elif c == "evaluate":
+        _out(predictions.evaluate(conn))
+    elif c == "report":
+        print(report.write(conn, Path(args.dir)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -125,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             print("database has pending migrations; run `python -m cryptoagent init-db` first", file=sys.stderr)
             return 2
         run(args, conn, settings)
-    except UsageError as exc:
+    except (UsageError, UnknownMarket, LedgerError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except sqlite3.IntegrityError as exc:
