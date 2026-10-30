@@ -22,6 +22,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | The user is in the US. Providers that are unavailable to US persons are excluded. |
 | 2026-10-30 | Start from exchange data. Nothing is imported from the earlier Crypto Asymmetry Engine; its ideas (e.g. 200-day EMA deviation bands at −37.5/−60/−75%) enter only as hypotheses to test. |
 | 2026-10-30 | Phases re-ordered to the user's "Crypto Intelligence Agent 2.0" notes: v0.3 becomes the first working trading researcher (backtests, patterns and specialist subagents together). Altcoin scanning, hourly/4h data and macro data move to v0.4–v0.5. Hourly data starts with BTC and ETH only. FRED terms must be verified before any macro data is used. |
+| 2026-10-30 | **universe-v2 approved by the user** and made the default. It is v1 plus two exclusions: a fixed list of assets that track something else (fiat stablecoins USDT, DAI, PYUSD, EURC, GUSD, PAX, BUSD, USD1, USDS; commodity token PAXG; wrapped or staked WBTC, CBETH, LSETH, MSOL, JITOSOL), and a backstop that excludes anything with 30-day volatility under 10%. Reason: USDT and PAXG were in the 2026-10-30 scan, and past universes contained DAI, WBTC and CBETH. v1 stays callable (`scan --universe universe-v1`). |
 
 ## Principles
 
@@ -237,7 +238,7 @@ Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and
 - **Survivorship-free history.**
   - Coinbase still serves candles for delisted products (verified 2026-10-30), so the collector also backfills every *delisted* USD market once. It starts from the market's last candle, which it fetches without a start date.
   - A market's effective delisting date is its last candle. Status history only starts from our first run.
-- **Universe `universe-v1`** (`quant/universe.py`). These are point-in-time rules over trailing data only, so a past `--as-of` reproduces what was knowable then, including coins that were later delisted.
+- **Universe `universe-v1`** (`quant/universe.py`; superseded by `universe-v2`, see the decision log). These are point-in-time rules over trailing data only, so a past `--as-of` reproduces what was knowable then, including coins that were later delisted.
   - Coinbase USD markets with a candle within the last 3 days of the as-of date.
   - At least 200 days of history.
   - Median daily dollar volume (close × volume) over the last 30 days of at least $1,000,000.

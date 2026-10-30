@@ -84,8 +84,9 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - Outcomes must use the stored target-day close.
   - `source` is `model` (deterministic base rates, recorded daily) or `judgment` (Claude), and the scorecard compares each against `base_rate_v1`.
 - **report** (`report.py`): the deterministic daily report, including the scanner and recommendation summaries.
-- **universe** (`quant/universe.py`): the `universe-v1` point-in-time liquid universe and `scan`.
-  - Rules: a candle within the last 3 days, at least 200 days of history, and at least $1M median 30-day dollar volume.
+- **universe** (`quant/universe.py`): the point-in-time liquid universe and `scan`. The default is `universe-v2`, approved 2026-10-30; `--universe universe-v1` reproduces older scans.
+  - v1 rules: a candle within the last 3 days, at least 200 days of history, and at least $1M median 30-day dollar volume.
+  - v2 adds two exclusions: listed pegged, commodity and wrapped assets (`EXCLUDED_ASSETS`), and anything with 30-day volatility under 10%.
   - Delisted Coinbase markets are stored, so past scans include coins that later died (no survivorship bias). Changing a threshold means a new version that the user approves.
 - **recommendations** (`recommendations.py`, migration 004): an append-only ledger bound to the latest candle; a `buy` needs an ATR stop.
   - `evaluate` replays a `buy` with the backtest engine (with costs) once the horizon day's candle exists.

@@ -135,6 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = preds.add_parser("list")
     p.add_argument("--status", choices=["open", "resolved", "unresolvable"])
     p.add_argument("--source", choices=["model", "judgment"])
+    p.add_argument("--market", help="SOURCE:SYMBOL")
     p.add_argument("--limit", type=int, default=50)
     p = preds.add_parser("score", help="Brier, skill vs base rate, calibration, sample sizes")
     p.add_argument("--market")
@@ -146,6 +147,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sort", default="rs90", help="numeric field to sort by, descending (default rs90)")
     p.add_argument("--limit", type=int)
     p.add_argument("--pattern", help="only markets where this pattern is active")
+    p.add_argument("--universe", choices=universe.VERSIONS, default=universe.VERSION,
+                   help="universe definition (default: the latest approved)")
 
     rec = cmd.add_parser("recommend", help="record a structured recommendation").add_subparsers(dest="action",
                                                                                                  required=True)
@@ -264,14 +267,14 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "predict" and args.action == "baselines":
         _out(predictions.record_baselines(conn, args.market))
     elif c == "predictions" and args.action == "list":
-        _out(predictions.list_predictions(conn, args.status, args.source, args.limit))
+        _out(predictions.list_predictions(conn, args.status, args.source, args.limit, args.market))
     elif c == "predictions" and args.action == "score":
         _out(predictions.scorecard(conn, args.market))
     elif c == "evaluate":
         _out({"predictions": predictions.evaluate(conn), "recommendations": recommendations.evaluate(conn)})
     elif c == "scan":
         counts = {r[0]: r[1] for r in conn.execute("SELECT market, count(*) FROM trials GROUP BY market")}
-        result = universe.scan(conn, args.as_of, sort=args.sort, trials_by_market=counts)
+        result = universe.scan(conn, args.as_of, sort=args.sort, trials_by_market=counts, version=args.universe)
         if args.pattern:
             if args.pattern not in patterns.PATTERNS:
                 raise UsageError(f"unknown pattern {args.pattern!r}")

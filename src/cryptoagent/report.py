@@ -133,7 +133,9 @@ def _scanner_section(conn) -> list[str]:
     lines = [f"## Scanner ({result['version']}, as of {result['as_of']})", "",
              f"{c['universe']} liquid markets out of {c['markets_with_history']} with history "
              f"(stale or delisted {c['stale']}, under {universe.MIN_HISTORY_DAYS} days {c['short_history']}, "
-             f"median 30-day dollar volume under ${universe.MIN_MEDIAN_DOLLAR_VOLUME:,.0f} {c['illiquid']}).", ""]
+             f"median 30-day dollar volume under ${universe.MIN_MEDIAN_DOLLAR_VOLUME:,.0f} {c['illiquid']}, "
+             f"pegged or wrapped {c.get('pegged_or_wrapped', 0)}, 30-day volatility under "
+             f"{universe.MIN_VOL30:.0%} {c.get('low_volatility', 0)}).", ""]
     with_setups = [m for m in result["markets"] if m["active_patterns"]]
     if not with_setups:
         return lines + ["No defined setup is active in the universe today."]

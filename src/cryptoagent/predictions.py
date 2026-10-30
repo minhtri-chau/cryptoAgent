@@ -194,7 +194,7 @@ def scorecard(conn: sqlite3.Connection, market: str | None = None) -> list[dict]
 
 
 def list_predictions(conn: sqlite3.Connection, status: str | None = None, source: str | None = None,
-                     limit: int = 50) -> list[dict]:
+                     limit: int = 50, market: str | None = None) -> list[dict]:
     rows = conn.execute(
         "SELECT p.id, s.name || ':' || m.symbol AS market, p.created_at, p.as_of, p.as_of_close, p.horizon_days,"
         " p.target_day, p.prob_up, p.source, p.model, p.rationale, coalesce(o.status, 'open') AS status,"
@@ -202,7 +202,7 @@ def list_predictions(conn: sqlite3.Connection, status: str | None = None, source
         " FROM predictions p JOIN markets m ON m.id = p.market_id JOIN sources s ON s.id = m.source_id"
         " LEFT JOIN outcomes o ON o.prediction_id = p.id"
         " WHERE (? IS NULL OR coalesce(o.status, 'open') = ?) AND (? IS NULL OR p.source = ?)"
-        " ORDER BY p.id DESC LIMIT ?",
-        (status, status, source, source, limit),
+        " AND (? IS NULL OR s.name || ':' || m.symbol = ?) ORDER BY p.id DESC LIMIT ?",
+        (status, status, source, source, market, market, limit),
     ).fetchall()
     return [dict(r) for r in rows]

@@ -1,4 +1,4 @@
-"""Point-in-time tradable universe (universe-v1) and the scanner built on it.
+"""Point-in-time tradable universe and the scanner built on it.
 
 universe-v1, as of day D, using only candles on or before D:
 - a USD market of the source with a daily candle within MAX_STALENESS_DAYS of D
@@ -6,7 +6,17 @@ universe-v1, as of day D, using only candles on or before D:
 - at least MIN_HISTORY_DAYS daily candles
 - median daily dollar volume (close x volume) over the last LIQUIDITY_WINDOW candles of at
   least MIN_MEDIAN_DOLLAR_VOLUME
-The thresholds are the definition: changing one makes a new version that the user approves.
+
+universe-v2 (approved by the user 2026-10-30; the default) is v1 plus two exclusions:
+- assets that track something else, listed in EXCLUDED_ASSETS: fiat stablecoins, a
+  commodity token, and wrapped or staked versions of other coins (duplicate exposure)
+- a backstop for pegged assets not yet listed: 30-day annualised volatility of daily log
+  returns below MIN_VOL30, measured on candles up to D (no real crypto asset in the 2026
+  universe was below 29%; stablecoins sit around 0.3–2%)
+v1 stays callable so earlier scans can be reproduced.
+
+The thresholds and lists are the definition: changing one makes a new version that the
+user approves.
 
 The scanner reports facts per market and sorts by a key the caller chooses. Deciding which
 markets are interesting is reasoning, left to the altcoin-scanner subagent.
@@ -22,12 +32,20 @@ import pandas as pd
 from cryptoagent.quant import indicators as ind
 from cryptoagent.quant import patterns, regime
 
-VERSION = "universe-v1"
+VERSIONS = ("universe-v1", "universe-v2")
+VERSION = "universe-v2"  # default
 MAX_STALENESS_DAYS = 3
 MIN_HISTORY_DAYS = 200
 LIQUIDITY_WINDOW = 30
 MIN_MEDIAN_DOLLAR_VOLUME = 1_000_000.0
 BENCHMARK = "BTC/USD"
+MIN_VOL30 = 0.10  # universe-v2 backstop
+EXCLUDED_ASSETS = {  # universe-v2; base symbols as Coinbase lists them
+    "fiat_stablecoin": ("USDT", "DAI", "PYUSD", "EURC", "GUSD", "PAX", "BUSD", "USD1", "USDS"),
+    "commodity_token": ("PAXG",),
+    "wrapped_or_staked": ("WBTC", "CBETH", "LSETH", "MSOL", "JITOSOL"),
+}
+_EXCLUDED = {symbol: category for category, symbols in EXCLUDED_ASSETS.items() for symbol in symbols}
 
 
 def _candles(conn: sqlite3.Connection, source: str, quote: str, as_of: str) -> dict[str, pd.DataFrame]:
@@ -43,9 +61,15 @@ def _candles(conn: sqlite3.Connection, source: str, quote: str, as_of: str) -> d
     return {s: g.drop(columns="symbol").set_index("day").astype(float) for s, g in frame.groupby("symbol")}
 
 
-def membership(df: pd.DataFrame, as_of: pd.Timestamp) -> tuple[bool, str, dict]:
+def membership(df: pd.DataFrame, as_of: pd.Timestamp, base: str | None = None,
+               version: str = VERSION) -> tuple[bool, str, dict]:
     """Whether one market qualifies on as_of, why not if it doesn't, and the measured values."""
     facts = {"history_days": len(df), "last_candle": df.index[-1].date().isoformat() if len(df) else None}
+    if version not in VERSIONS:
+        raise ValueError(f"unknown universe version {version!r}; use {', '.join(VERSIONS)}")
+    if version == "universe-v2" and base in _EXCLUDED:
+        facts["excluded_category"] = _EXCLUDED[base]
+        return False, "pegged_or_wrapped", facts
     if df.empty or (as_of - df.index[-1]).days > MAX_STALENESS_DAYS:
         return False, "stale", facts
     if len(df) < MIN_HISTORY_DAYS:
@@ -54,6 +78,11 @@ def membership(df: pd.DataFrame, as_of: pd.Timestamp) -> tuple[bool, str, dict]:
     facts["median_dollar_volume"] = round(float((recent["close"] * recent["volume"]).median()), 2)
     if facts["median_dollar_volume"] < MIN_MEDIAN_DOLLAR_VOLUME:
         return False, "illiquid", facts
+    if version == "universe-v2":
+        vol = ind.realized_vol(df["close"].iloc[-(LIQUIDITY_WINDOW + 1):], LIQUIDITY_WINDOW).iloc[-1]
+        if vol == vol and vol < MIN_VOL30:
+            facts["vol30"] = round(float(vol), 6)
+            return False, "low_volatility", facts
     return True, "member", facts
 
 
@@ -64,7 +93,8 @@ def _round(value, digits=6):
 
 
 def scan(conn: sqlite3.Connection, as_of: str | None = None, source: str = "coinbase", quote: str = "USD",
-         sort: str = "rs90", limit: int | None = None, trials_by_market: dict | None = None) -> dict:
+         sort: str = "rs90", limit: int | None = None, trials_by_market: dict | None = None,
+         version: str = VERSION) -> dict:
     if as_of is None:
         as_of = conn.execute(
             "SELECT substr(max(c.ts), 1, 10) FROM candles c JOIN markets m ON m.id = c.market_id"
@@ -72,7 +102,11 @@ def scan(conn: sqlite3.Connection, as_of: str | None = None, source: str = "coin
             (source, BENCHMARK)).fetchone()[0]
     day = pd.Timestamp(as_of)
     data = _candles(conn, source, quote, as_of)
-    counts = {"markets_with_history": len(data), "stale": 0, "short_history": 0, "illiquid": 0, "universe": 0}
+    counts = {"markets_with_history": len(data), "stale": 0, "short_history": 0, "illiquid": 0}
+    if version == "universe-v2":
+        counts.update(pegged_or_wrapped=0, low_volatility=0)
+    counts["universe"] = 0
+    excluded = []
     bench = data.get(BENCHMARK)
     bench_roc = {}
     if bench is not None and len(bench):
@@ -80,9 +114,12 @@ def scan(conn: sqlite3.Connection, as_of: str | None = None, source: str = "coin
         bench_roc = {n: b[f"roc{n}"] for n in (30, 90)}
     rows = []
     for symbol, df in data.items():
-        ok, reason, facts = membership(df, day)
+        ok, reason, facts = membership(df, day, symbol.split("/")[0], version)
         if not ok:
             counts[reason] += 1
+            if reason in ("pegged_or_wrapped", "low_volatility"):
+                excluded.append({"market": f"{source}:{symbol}", "reason": reason,
+                                 **{k: facts[k] for k in ("excluded_category", "vol30") if k in facts}})
             continue
         counts["universe"] += 1
         i = ind.compute_all(df)
@@ -105,8 +142,10 @@ def scan(conn: sqlite3.Connection, as_of: str | None = None, source: str = "coin
     if rows and sort not in rows[0]:
         raise patterns.SpecError(f"unknown sort key {sort!r}; use one of {', '.join(k for k in rows[0])}")
     rows.sort(key=lambda r: (r[sort] is None, -(r[sort] or 0) if isinstance(r[sort], (int, float)) else 0))
-    return {"version": VERSION, "as_of": as_of, "benchmark": f"{source}:{BENCHMARK}",
-            "rules": {"max_staleness_days": MAX_STALENESS_DAYS, "min_history_days": MIN_HISTORY_DAYS,
-                      "liquidity_window": LIQUIDITY_WINDOW, "min_median_dollar_volume": MIN_MEDIAN_DOLLAR_VOLUME},
-            "counts": counts, "sorted_by": f"{sort} (descending)",
-            "markets": rows[:limit] if limit else rows}
+    rules = {"max_staleness_days": MAX_STALENESS_DAYS, "min_history_days": MIN_HISTORY_DAYS,
+             "liquidity_window": LIQUIDITY_WINDOW, "min_median_dollar_volume": MIN_MEDIAN_DOLLAR_VOLUME}
+    out = {"version": version, "as_of": as_of, "benchmark": f"{source}:{BENCHMARK}", "rules": rules}
+    if version == "universe-v2":
+        rules.update(min_vol30=MIN_VOL30, excluded_assets=EXCLUDED_ASSETS)
+        out["excluded"] = excluded
+    return {**out, "counts": counts, "sorted_by": f"{sort} (descending)", "markets": rows[:limit] if limit else rows}

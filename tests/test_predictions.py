@@ -121,3 +121,10 @@ def test_scorecard_reports_skill_and_warns_on_small_samples(conn, btc):
 def test_approx_independent_counts_non_overlapping_windows():
     days = [f"2024-01-{d:02d}" for d in range(1, 31)]
     assert pr._approx_independent(days, 7) == 5  # Jan 1, 8, 15, 22, 29
+
+
+def test_list_filters_by_market(conn, btc):
+    add_days(conn, btc, [100, 101])
+    pr.record(conn, "coinbase:BTC/USD", 1, 0.5, "judgment", "claude")
+    assert len(pr.list_predictions(conn, market="coinbase:BTC/USD")) == 1
+    assert pr.list_predictions(conn, market="coinbase:ETH/USD") == []
