@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptoagent import predictions, quality, recommendations
-from cryptoagent.quant import indicators, regime, universe
+from cryptoagent.quant import analogs, indicators, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
 REGIME_MARKET = "bitstamp:BTC/USD"   # one venue back to 2011, for cycle context
@@ -82,6 +82,47 @@ def _regime_section(conn) -> list[str]:
         f"| Deviation from EMA 200 / deepest band | {_fmt(snap['ema200_dev'], 'pct')} / {band} |",
         f"| Halving cycle | cycle {snap['halving_cycle']}, day {snap['days_since_halving']} |",
     ]
+
+
+def _analog_section(conn) -> list[str]:
+    try:
+        df = load_daily(conn, REGIME_MARKET)
+    except UnknownMarket:
+        return ["## Bitcoin analogues", "", f"unavailable: no data for {REGIME_MARKET}"]
+    lines = [f"## Bitcoin analogues ({analogs.VERSION}, {REGIME_MARKET})", "",
+             "Past days whose state (returns, EMA200 deviation, SMA200 slope, volatility, RSI, drawdown) was closest "
+             "to the latest day, each a separate episode, and what followed. Context, not a forecast: the method's "
+             "value over the base rate is measured by `analogs evaluate` trials.", "",
+             "| Horizon | Analogues (n) | Share up (CI90) | Median return | Mean MAE / MFE | All days: share up |",
+             "|---|---|---|---|---|---|"]
+    closest = []
+    for horizon, k in ((30, 15), (90, 10)):
+        try:
+            r = analogs.search(df, horizon, k)
+        except analogs.AnalogError as exc:
+            lines.append(f"| {horizon}d | unavailable: {exc} | | | | |")
+            continue
+        a, u = r["analogues"], r["unconditional"]
+        ci = a.get("share_up_ci90") or [None, None]
+        lines.append(f"| {horizon}d | {r['effective_n']} | {_fmt(a['share_up'], 'level')} "
+                     f"({_fmt(ci[0], 'level')}–{_fmt(ci[1], 'level')}) | {_fmt(a['quantiles']['p50'], 'pct')} | "
+                     f"{_fmt(a['mean_mae'], 'pct')} / {_fmt(a['mean_mfe'], 'pct')} | {_fmt(u['share_up'], 'level')} |")
+        if horizon == 30:
+            closest = r["neighbours"][:5]
+    if closest:
+        lines += ["", "Closest 30-day analogues: " + ", ".join(
+            f"{n['day']} ({_fmt(n['forward_return'], 'pct')})" for n in closest) + "."]
+    evaluated = conn.execute(
+        "SELECT id, period, json_extract(spec, '$.horizon_days'), json_extract(results, '$.brier_skill_vs_base'),"
+        " trades FROM trials WHERE json_extract(spec, '$.method') = ? AND market = ? ORDER BY id",
+        (analogs.VERSION, REGIME_MARKET)).fetchall()
+    if evaluated:
+        lines += ["", "Recorded evaluations against the base rate (Brier skill; above 0 means analogues were better): "
+                  + "; ".join(f"trial {i} {p} {h}d: {_fmt(s, 'pct')} over {n} dates" for i, p, h, s, n in evaluated)
+                  + "."]
+    else:
+        lines += ["", "No recorded evaluation of this method yet: treat it as unvalidated."]
+    return lines
 
 
 def _indicator_section(conn) -> list[str]:
@@ -168,7 +209,8 @@ def render(conn: sqlite3.Connection) -> str:
     sections = [
         [f"# Daily market report", "", f"Generated {now}. Deterministic output: every number comes from stored data "
          "and the code in this repository; there is no AI interpretation here. Not financial advice."],
-        _data_section(conn), _regime_section(conn), _indicator_section(conn), _predictions_section(conn),
+        _data_section(conn), _regime_section(conn), _analog_section(conn), _indicator_section(conn),
+        _predictions_section(conn),
         _scorecard_section(conn), _recommendations_section(conn), _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "
          "Bitstamp public market data."],

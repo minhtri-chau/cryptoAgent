@@ -54,6 +54,10 @@ v0.4 commands:
 - `recommendations list|score`
 - `evaluate` resolves both predictions and recommendations
 
+v0.5 commands:
+- `analogs search SOURCE:SYMBOL [--as-of] [--horizon 30] [--k 15] [--brief]`
+- `analogs evaluate --market --horizon --k --period --family --hypothesis --by`: always recorded as a trial
+
 Research workflows:
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
 - `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`, plus `altcoin-scanner` for `/opportunities`. Every investigation records a judgment prediction and a recommendation, `no_trade` included. Reports go to `reports/research/`.
@@ -91,6 +95,12 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
 - **recommendations** (`recommendations.py`, migration 004): an append-only ledger bound to the latest candle; a `buy` needs an ATR stop.
   - `evaluate` replays a `buy` with the backtest engine (with costs) once the horizon day's candle exists.
   - Every action is also scored against the market's own return.
+- **analogs** (`quant/analogs.py`): `analog-v1` nearest past states.
+  - Candidates' whole forward window must end by the as-of day (the purge).
+  - Neighbours are at least one horizon apart, so the neighbour count is the effective n.
+  - Walk-forward evaluation against the base rate is recorded in the trial registry. Train evaluation on BTC lost to the base rate (trials 19–20), so the method is context only.
+  - The daily task still records `analog_v1` predictions for coinbase:BTC/USD to build a forward record.
+- **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.
   - Each is a function with a docstring definition, a hand-worked test and a no-look-ahead test.

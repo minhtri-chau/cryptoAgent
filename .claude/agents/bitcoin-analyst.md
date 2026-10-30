@@ -17,7 +17,8 @@ You are the Bitcoin analyst for the cryptoAgent research project (repo root is t
 2. `indicators coinbase:BTC/USD --last 5` and `indicators coinbase:BTC/USD --timeframe 1w --last 4`: the daily and weekly picture.
 3. `patterns coinbase:BTC/USD` and `patterns coinbase:BTC/USD --timeframe 1w`: which defined setups are active.
 4. For cycle context, `regime --as-of <date>` on comparable past dates you choose, e.g. the same number of days after earlier halvings. Report what those dates looked like and state that there are only about 4 cycles, so this is context, not statistics.
-5. `predictions list --source model --limit 8`: today's base-rate probabilities for BTC.
+5. `predictions list --source model --market coinbase:BTC/USD --limit 12`: today's base-rate and `analog_v1` probabilities for BTC.
+6. `analogs search bitstamp:BTC/USD --horizon 30 --brief` (and `--horizon 90 --k 10`): the closest past episodes and what followed. Report the effective n and CI90, compare with the unconditional share up, and say whether analogues have beaten the base rate in recorded trials (`trials list --family analog-btc`). If no trial exists, say the method is unvalidated.
 
 ## Report (keep it under ~400 words)
 - **State:** trend, volatility, drawdown, EMA200 deviation and band, halving cycle day, each with its source command.

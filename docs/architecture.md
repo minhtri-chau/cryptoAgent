@@ -23,6 +23,8 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | Start from exchange data. Nothing is imported from the earlier Crypto Asymmetry Engine; its ideas (e.g. 200-day EMA deviation bands at −37.5/−60/−75%) enter only as hypotheses to test. |
 | 2026-10-30 | Phases re-ordered to the user's "Crypto Intelligence Agent 2.0" notes: v0.3 becomes the first working trading researcher (backtests, patterns and specialist subagents together). Altcoin scanning, hourly/4h data and macro data move to v0.4–v0.5. Hourly data starts with BTC and ETH only. FRED terms must be verified before any macro data is used. |
 | 2026-10-30 | **universe-v2 approved by the user** and made the default. It is v1 plus two exclusions: a fixed list of assets that track something else (fiat stablecoins USDT, DAI, PYUSD, EURC, GUSD, PAX, BUSD, USD1, USDS; commodity token PAXG; wrapped or staked WBTC, CBETH, LSETH, MSOL, JITOSOL), and a backstop that excludes anything with 30-day volatility under 10%. Reason: USDT and PAXG were in the 2026-10-30 scan, and past universes contained DAI, WBTC and CBETH. v1 stays callable (`scan --universe universe-v1`). |
+| 2026-10-30 | **analog-v1 did not beat the base rate.** In train (bitstamp:BTC/USD), Brier skill was −4.8% at 30 days (trial 19, 111 dates) and −5.3% at 90 days (trial 20, 36 dates); both CIs include 0. Validation was not run. Analogues stay as context in reports and as forward-tracked `analog_v1` predictions, but they aren't used for decisions. |
+| 2026-10-30 | **FRED not used yet.** Its terms forbid storing, caching or archiving FRED content without the Bank's prior written consent. Personal-use downloading is allowed, but this project stores data by design. Macro integration waits on the user's decision (see `docs/data-sources.md`). |
 
 ## Principles
 
@@ -275,6 +277,47 @@ Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and
 5. BTC and ETH have 1h candles from listing, and 4h candles come only from complete 1h candles. Indicators and patterns run on 1h and 4h.
 6. The `altcoin-scanner` subagent and `/opportunities` exist, and `/investigate` records a recommendation.
 7. The daily task collects 1h data and the report includes a scanner section. The phase ends with a commit; the tag waits for the terms review.
+
+## v0.5 design: historical analogues and macro context
+
+- **Analog engine `analog-v1`** (`quant/analogs.py`). The question it answers: when did this market last look like it does today, and what happened next?
+  - **State vector** for day t, built from indicators that use bars up to t only:
+    - returns over 7, 30 and 90 days;
+    - deviation from EMA200;
+    - SMA200 20-day slope;
+    - log of 30-day volatility;
+    - RSI 14;
+    - drawdown from the all-time high.
+  - **Point-in-time.** Searching as of day D uses only candles up to D:
+    - features are z-scored with means and standard deviations from the candidate days only;
+    - a candidate day s is eligible only if its whole forward window has ended by D (s + h ≤ D). This is the purge, so no outcome after D is ever used.
+  - **Neighbours.** The k closest days by Euclidean distance, equal weights, chosen greedily so that no two are within h days of each other. Neighbours from the same episode aren't counted twice.
+  - **Effective sample size.** The neighbour count is reported as the number of distinct episodes, never the raw count of days.
+  - **Output:**
+    - the neighbour dates, distances and states;
+    - forward return quantiles (10/25/50/75/90), mean and share up, with bootstrap CI90s;
+    - MAE and MFE over each forward window;
+    - the same statistics for every eligible day (the unconditional base rate);
+    - the regime label of each neighbour compared with today's.
+  - Changing a feature, the distance or the selection rule makes a new version.
+- **Validation against the simpler method** (`analogs evaluate`). On dates spaced h days apart within a period, it records P(up) from `analog-v1` and from the base rate, each computed only from data before the date, and scores both with Brier. Every evaluation is a trial in the registry (spec `{"method": "analog-v1", ...}`), and the same sealed-test rule applies. The analog method is used for decisions only where it beats the base rate on validation.
+- **Forward tracking.** The daily task also records `analog_v1` predictions for `coinbase:BTC/USD` at 30 and 90 days, so the method builds a forward record alongside the base rates.
+- **Macro data** (FRED; only series whose terms are verified, see `docs/data-sources.md`):
+  - Daily observations are stored with an `available_on` date: the observation date plus the series' publication lag. Anything that uses macro data as of day D sees only values available by D.
+  - Exposed through `macro` (CLI) and a macro section in the report.
+  - Using macro data in backtest conditions and analogue features is v0.6, once it has been checked here.
+- **Subagents.**
+  - `bitcoin-analyst` adds analogues and macro context.
+  - `quant-researcher` can evaluate analogues.
+
+## v0.5 acceptance criteria
+
+1. Analog search as of D gives identical results when bars after D are removed or replaced with garbage (no-look-ahead test). No eligible neighbour's forward window ends after D.
+2. Neighbours are at least h days apart, and the effective sample size is reported. Hand-made series with known look-alike episodes return those episodes.
+3. `analogs evaluate` scores analog-v1 against the base rate on non-overlapping dates, records a trial each time, and the test period stays sealed.
+4. Macro series are collected only after their terms are verified, and they are stored with `available_on`. A test shows a value isn't visible before its availability date.
+5. `cryptoagent analogs`, `analogs evaluate` and `macro` print JSON. The report includes analogues for BTC and the macro context.
+6. The daily task records `analog_v1` predictions for BTC, and the agents use the new tools. Commit; tags wait for the terms review.
 
 ## Main risks
 

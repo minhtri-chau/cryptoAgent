@@ -17,7 +17,7 @@ from cryptoagent import db, predictions, quality, recommendations, report, trial
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
-from cryptoagent.quant import indicators, patterns, regime, universe
+from cryptoagent.quant import analogs, indicators, patterns, regime, universe
 from cryptoagent.quant.backtest import Costs
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import UnknownMarket, load, load_daily
@@ -149,6 +149,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pattern", help="only markets where this pattern is active")
     p.add_argument("--universe", choices=universe.VERSIONS, default=universe.VERSION,
                    help="universe definition (default: the latest approved)")
+
+    an = cmd.add_parser("analogs", help=f"historical analogues ({analogs.VERSION})").add_subparsers(
+        dest="action", required=True)
+    p = an.add_parser("search", help="past days most like the latest (or --as-of) day, and what followed")
+    p.add_argument("market", help="SOURCE:SYMBOL")
+    p.add_argument("--as-of", help="YYYY-MM-DD: search as of the end of that day")
+    p.add_argument("--horizon", type=int, default=30, help="days ahead (default 30)")
+    p.add_argument("--k", type=int, default=15, help="neighbours, each a separate episode (default 15)")
+    p.add_argument("--brief", action="store_true", help="omit each neighbour's full state")
+    p = an.add_parser("evaluate", help="walk-forward Brier of analogues vs the base rate; always recorded as a trial")
+    p.add_argument("--market", required=True)
+    p.add_argument("--horizon", type=int, default=30)
+    p.add_argument("--k", type=int, default=15)
+    p.add_argument("--period", required=True, choices=list(trials.PERIODS))
+    p.add_argument("--family", required=True)
+    p.add_argument("--hypothesis", required=True)
+    p.add_argument("--by", required=True)
 
     rec = cmd.add_parser("recommend", help="record a structured recommendation").add_subparsers(dest="action",
                                                                                                  required=True)
@@ -283,6 +300,18 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         if args.limit:
             result["markets"] = result["markets"][:args.limit]
         _out(result)
+    elif c == "analogs" and args.action == "search":
+        try:
+            result = analogs.search(load_daily(conn, args.market, args.as_of), args.horizon, args.k)
+        except analogs.AnalogError as exc:
+            raise UsageError(str(exc)) from exc
+        if args.brief:
+            for n in result["neighbours"]:
+                n.pop("state")
+        _out(result)
+    elif c == "analogs" and args.action == "evaluate":
+        _out(trials.run_analog_trial(conn, args.market, args.horizon, args.k, args.period, args.family,
+                                     args.hypothesis, args.by))
     elif c == "recommend":
         try:
             evidence = json.loads(args.evidence) if args.evidence else None

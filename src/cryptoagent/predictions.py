@@ -21,10 +21,11 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
-from cryptoagent.quant import regime
+from cryptoagent.quant import analogs, regime
 from cryptoagent.quant.series import load_daily, market_id
 
 BASELINE_HORIZONS = (7, 30, 90, 365)
+ANALOG_K = {30: 15, 90: 10}  # analog_v1 forward predictions: horizon -> neighbours (fewer separate episodes fit 90 days)
 MIN_WINDOWS = 30          # fewer past windows than this and a base rate is not recorded
 GRACE_DAYS = 7            # a missing target candle is waited for this long, then unresolvable
 SMALL_SAMPLE = 30         # scorecard warning below this many approximately independent outcomes
@@ -99,6 +100,22 @@ def record_baselines(conn: sqlite3.Connection, market: str, horizons=BASELINE_HO
             pid = record(conn, market, h, info["prob_up"], "model", model, evidence=info)
             made.append({"id": pid, "model": model, "horizon_days": h, "prob_up": round(info["prob_up"], 4),
                          "windows": info["windows"]})
+    for h, k in ANALOG_K.items():
+        if h not in horizons or conn.execute(
+                "SELECT 1 FROM predictions WHERE market_id = ? AND as_of = ? AND horizon_days = ? AND source = 'model'"
+                " AND model = 'analog_v1'", (mid, as_of, h)).fetchone():
+            continue
+        try:
+            found = analogs.search(df, h, k)
+        except analogs.AnalogError:
+            continue  # too little history: no analogue prediction rather than a weak one
+        evidence = {"version": analogs.VERSION, "k": k, "effective_n": found["effective_n"],
+                    "neighbours": [n["day"] for n in found["neighbours"]],
+                    "unconditional_share_up": found["unconditional"]["share_up"]}
+        prob = found["analogues"]["share_up"]
+        pid = record(conn, market, h, prob, "model", "analog_v1", evidence=evidence)
+        made.append({"id": pid, "model": "analog_v1", "horizon_days": h, "prob_up": prob,
+                     "windows": found["effective_n"]})
     return made
 
 

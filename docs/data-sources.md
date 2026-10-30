@@ -23,6 +23,24 @@ Checked 2026-10-30.
 | CoinGecko Demo | Current market data | 1 year only | 100 calls/min, 10k/month; attribution required | — | Verified ([pricing](https://www.coingecko.com/en/api/pricing)). **Global market cap and dominance history are paid only**, so dominance history is **unavailable**. |
 | DefiLlama (`api.llama.fi`) | TVL, fees, revenue | Varies | Not stated | Not stated | Free and keyless verified ([docs](https://api-docs.defillama.com/llms-free.txt)). Planned for v0.7. |
 
+## FRED (macro data): not used, needs the Bank's written consent to store
+
+Checked 2026-10-30 on [fred.stlouisfed.org/legal](https://fred.stlouisfed.org/legal/):
+- **Personal, non-commercial use is allowed.** Cite the source and note that it was accessed via FRED.
+- **Storing is not.** Without the Bank's prior written consent, users may not "Store, cache, or archive any portion" of FRED content. The FAQ also says "Don't do any data mining, scraping or extraction".
+- **The API needs an account key** (120 requests/minute). The keyless `fredgraph.csv` URL works, but it isn't documented.
+
+| Series | Rights tag on FRED | Lag (inferred) | Revised |
+|---|---|---|---|
+| DGS10, DFF | Public domain, citation requested | ~1 day | rarely (unverified) |
+| DTWEXBGS | Public domain, citation requested | 3–7 days (weekly batch) | unverified |
+| WALCL | Public domain, citation requested | 1 day | yes |
+| M2SL | Public domain, citation requested | ~4 weeks | yes; definitional breaks in 2020 |
+| T10YIE, VIXCLS | Copyrighted, citation required | 0–1 day | unverified |
+| SP500, NASDAQCOM, BAMLH0A0HYM2 | **Copyrighted, pre-approval required** | — | — |
+
+**Decision pending (the user's call):** this project stores data by design, for reproducibility and point-in-time correctness, so no FRED collector is built until either FRED gives written consent or the user chooses another approach.
+
 ## Observed behaviour (live runs, 2026-10-30)
 
 - Coinbase and Bitstamp both return the **in-progress UTC day** as a candle. Collectors store only completed days.
