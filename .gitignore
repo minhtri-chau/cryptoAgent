@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Local data (provider licences may restrict sharing; keep it out of git)
+data/
+reports/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
