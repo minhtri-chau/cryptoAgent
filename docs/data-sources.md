@@ -43,7 +43,8 @@ Checked 2026-10-30.
 ## What we use
 
 - **v0.1:**
-  - **Coinbase Exchange** daily candles for every USD market, from listing. This is the primary venue.
+  - **Coinbase Exchange** daily candles for every USD market, from listing. This is the primary venue. Since v0.4 this includes delisted USD markets (history stored once), for survivorship-free scans.
+- **v0.4:** Coinbase 1h candles for BTC/USD and ETH/USD from listing (300 per request). 4h bars are built from them, because Coinbase has no 4h granularity.
   - **Bitstamp** btcusd daily from 2011-08-18 for long-cycle BTC history.
   - **Coin Metrics `PriceUSD`** as an independent reconciliation check on BTC closes.
 - **BTC dominance:** recorded from today forward once a free current-value source is chosen. Its history is **unavailable**.

@@ -99,10 +99,10 @@ def roc(close: pd.Series, n: int) -> pd.Series:
 
 
 def bars_per_year(index: pd.DatetimeIndex) -> float:
-    """365 for daily bars, 52.18 for weekly bars, inferred from the typical spacing of the index."""
+    """365 for daily bars, 52.18 weekly, 8760 hourly: inferred from the typical spacing of the index."""
     if len(index) < 2 or not isinstance(index, pd.DatetimeIndex):
         return float(DAYS_PER_YEAR)
-    spacing_days = pd.Series(index).diff().dt.days.median()
+    spacing_days = pd.Series(index).diff().dt.total_seconds().median() / 86_400
     return DAYS_PER_YEAR / spacing_days
 
 

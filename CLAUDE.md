@@ -46,7 +46,17 @@ v0.3 commands:
 - `backtest --market --pattern [--when "[MARKET] FIELD OP VALUE" ...] --hold N [--stop-atr K] [--target-atr M] --period train|validation|test --family --hypothesis --by [--trades]`: every run is recorded as a trial
 - `trials list [--family] | families | show ID`: `show` prints every stored result, so any reported number can be traced
 
-Research workflow: `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives four subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`. Reports go to `reports/research/`.
+v0.4 commands:
+- `collect coinbase-1h`: hourly BTC/ETH
+- `indicators|patterns --timeframe 1h|4h|1d|1w`
+- `scan [--as-of] [--sort FIELD] [--pattern NAME] [--limit N]`
+- `recommend add --market --horizon --do buy|sell|hold|wait|no_trade --entry --invalidation [--stop-atr] [--target-atr] --risks --limitations [--evidence] [--prediction] [--report] --by`
+- `recommendations list|score`
+- `evaluate` resolves both predictions and recommendations
+
+Research workflows:
+- `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
+- `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`, plus `altcoin-scanner` for `/opportunities`. Every investigation records a judgment prediction and a recommendation, `no_trade` included. Reports go to `reports/research/`.
 
 The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality → evaluate → baselines → report) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
 
@@ -73,7 +83,14 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - A trigger binds each prediction to the latest stored candle, so nothing can be back-dated.
   - Outcomes must use the stored target-day close.
   - `source` is `model` (deterministic base rates, recorded daily) or `judgment` (Claude), and the scorecard compares each against `base_rate_v1`.
-- **report** (`report.py`): the deterministic daily report.
+- **report** (`report.py`): the deterministic daily report, including the scanner and recommendation summaries.
+- **universe** (`quant/universe.py`): the `universe-v1` point-in-time liquid universe and `scan`.
+  - Rules: a candle within the last 3 days, at least 200 days of history, and at least $1M median 30-day dollar volume.
+  - Delisted Coinbase markets are stored, so past scans include coins that later died (no survivorship bias). Changing a threshold means a new version that the user approves.
+- **recommendations** (`recommendations.py`, migration 004): an append-only ledger bound to the latest candle; a `buy` needs an ATR stop.
+  - `evaluate` replays a `buy` with the backtest engine (with costs) once the horizon day's candle exists.
+  - Every action is also scored against the market's own return.
+- **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.
   - Each is a function with a docstring definition, a hand-worked test and a no-look-ahead test.
   - Add new ideas here as code. Subjective chart patterns aren't allowed.

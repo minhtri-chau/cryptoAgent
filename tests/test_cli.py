@@ -16,7 +16,8 @@ def test_refuses_to_run_with_pending_migrations(tmp_path, capsys):
 def test_init_then_read_commands_print_json(tmp_path, capsys):
     path = str(tmp_path / "t.db")
     assert main(["--db", path, "init-db"]) == 0
-    assert json.loads(capsys.readouterr().out)["applied"] == ["001_market_data.sql", "002_predictions.sql", "003_trials.sql"]
+    assert json.loads(capsys.readouterr().out)["applied"] == ["001_market_data.sql", "002_predictions.sql", "003_trials.sql",
+                                                                 "004_hourly_and_recommendations.sql"]
     assert main(["--db", path, "markets"]) == 0
     assert json.loads(capsys.readouterr().out) == []
     assert main(["--db", path, "quality"]) == 0

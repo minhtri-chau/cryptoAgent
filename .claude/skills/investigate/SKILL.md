@@ -61,6 +61,15 @@ Give **risk-reviewer** the draft and the evidence: the raw subagent reports and 
     --evidence "{\"trials\": [..], \"report\": \"reports/research/YYYY-MM-DD-COIN.md\"}"
   ```
   This only works when the latest candle is in the database; the CLI binds the prediction to it.
+- **Record the recommendation, for every investigation, including `wait` and `no_trade`.**
+  - Use the thesis fields and link the prediction.
+  - A `buy` must use the stop, and any target, of the tested specification. Without a tested specification, a buy isn't allowed.
+  - `evaluate` later replays a `buy` with the backtest engine. Every action is compared with the market's own return over the horizon.
+  ```
+  .venv/Scripts/python -m cryptoagent recommend add --market MARKET --horizon DAYS --do ACTION \
+    --entry "..." --invalidation "..." [--stop-atr K] [--target-atr M] --risks "..." --limitations "..." \
+    --evidence "{\"trials\": [..]}" --prediction PREDICTION_ID --report reports/research/YYYY-MM-DD-COIN.md --by claude
+  ```
 - Write `reports/research/YYYY-MM-DD-<coin>.md` with these sections in this order:
   1. Summary: the action, and one paragraph.
   2. Data status.
@@ -69,7 +78,7 @@ Give **risk-reviewer** the draft and the evidence: the raw subagent reports and 
   5. Hypotheses tested: a table of the specifications, trial IDs, train vs validation results and verdicts.
   6. Thesis: every field from step 5.
   7. Risk review: the verdict, objections and how each was handled.
-  8. Prediction recorded: its ID, P(up), the base rate and the target day.
+  8. Prediction and recommendation recorded: their IDs, P(up), the base rate, the target day, and the stop and target levels from `recommend add`.
   9. Limitations.
   10. Sources: the commands run.
 

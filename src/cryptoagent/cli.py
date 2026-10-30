@@ -13,11 +13,11 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import db, predictions, quality, report, trials
+from cryptoagent import db, predictions, quality, recommendations, report, trials
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
-from cryptoagent.quant import indicators, patterns, regime
+from cryptoagent.quant import indicators, patterns, regime, universe
 from cryptoagent.quant.backtest import Costs
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import UnknownMarket, load, load_daily
@@ -33,6 +33,11 @@ def _out(data) -> None:
 
 def _jsonable(row) -> dict:
     return {k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
+
+
+def _bar_label(ts, timeframe: str) -> str:
+    """Start of the bar: a date for daily/weekly bars, an ISO UTC time for intraday bars."""
+    return ts.date().isoformat() if timeframe in ("1d", "1w") else ts.strftime("%Y-%m-%dT%H:%MZ")
 
 
 def parse_when(text: str) -> dict:
@@ -80,12 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
     p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
     p.add_argument("--last", type=int, default=1, help="number of most recent bars")
-    p.add_argument("--timeframe", choices=["1d", "1w"], default="1d")
+    p.add_argument("--timeframe", choices=["1h", "4h", "1d", "1w"], default="1d")
 
     p = cmd.add_parser("patterns", help="which defined setups are active on the latest bar, with their history")
     p.add_argument("market", help="SOURCE:SYMBOL")
     p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
-    p.add_argument("--timeframe", choices=["1d", "1w"], default="1d")
+    p.add_argument("--timeframe", choices=["1h", "4h", "1d", "1w"], default="1d")
 
     p = cmd.add_parser("backtest", help="backtest one setup on a chronological period; always recorded as a trial")
     p.add_argument("--market", required=True)
@@ -134,7 +139,37 @@ def build_parser() -> argparse.ArgumentParser:
     p = preds.add_parser("score", help="Brier, skill vs base rate, calibration, sample sizes")
     p.add_argument("--market")
 
-    cmd.add_parser("evaluate", help="resolve predictions whose target day's candle is stored")
+    cmd.add_parser("evaluate", help="resolve predictions and recommendations whose horizon day's candle is stored")
+
+    p = cmd.add_parser("scan", help=f"{universe.VERSION} universe with per-market facts (no ranking judgment)")
+    p.add_argument("--as-of", help="YYYY-MM-DD: scan as it could have been done at the end of that day")
+    p.add_argument("--sort", default="rs90", help="numeric field to sort by, descending (default rs90)")
+    p.add_argument("--limit", type=int)
+    p.add_argument("--pattern", help="only markets where this pattern is active")
+
+    rec = cmd.add_parser("recommend", help="record a structured recommendation").add_subparsers(dest="action",
+                                                                                                 required=True)
+    p = rec.add_parser("add")
+    p.add_argument("--market", required=True)
+    p.add_argument("--horizon", type=int, required=True, help="days")
+    p.add_argument("--do", dest="rec_action", required=True, choices=recommendations.ACTIONS)
+    p.add_argument("--entry", required=True, help="entry conditions (or why there is none)")
+    p.add_argument("--invalidation", required=True)
+    p.add_argument("--stop-atr", type=float, help="required for buy: stop at entry - K x ATR14")
+    p.add_argument("--target-atr", type=float)
+    p.add_argument("--risks", required=True)
+    p.add_argument("--limitations", required=True)
+    p.add_argument("--evidence", help="JSON object: trial ids, prediction ids, commands")
+    p.add_argument("--prediction", type=int, help="id of the linked judgment prediction")
+    p.add_argument("--report", help="path of the research report")
+    p.add_argument("--by", required=True)
+
+    recs = cmd.add_parser("recommendations", help="the recommendation ledger").add_subparsers(dest="action",
+                                                                                               required=True)
+    p = recs.add_parser("list")
+    p.add_argument("--status", choices=["open", "resolved", "unresolvable"])
+    p.add_argument("--limit", type=int, default=50)
+    recs.add_parser("score", help="outcomes by action, with sample sizes")
 
     p = cmd.add_parser("report", help="write the deterministic daily report to reports/YYYY-MM-DD.md")
     p.add_argument("--dir", default="reports")
@@ -156,9 +191,10 @@ def list_markets(conn, source: str | None, status: str | None) -> list[dict]:
     rows = conn.execute(
         """
         SELECT s.name AS source, m.symbol, m.venue_id, h.status, h.active, h.observed_at AS status_since,
-               m.history_start_found_at, c.first_ts, c.last_ts, coalesce(c.n, 0) AS candles
+               b.history_start_found_at, c.first_ts, c.last_ts, coalesce(c.n, 0) AS candles
         FROM markets m
         JOIN sources s ON s.id = m.source_id
+        LEFT JOIN market_backfill b ON b.market_id = m.id AND b.timeframe = '1d'
         LEFT JOIN market_status_history h
                ON h.id = (SELECT max(id) FROM market_status_history WHERE market_id = m.id)
         LEFT JOIN (SELECT market_id, min(ts) AS first_ts, max(ts) AS last_ts, count(*) AS n
@@ -199,12 +235,11 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out([dict(r) for r in reversed(rows)])
     elif c == "indicators":
         frame = indicators.compute_all(load(conn, args.market, args.timeframe, args.as_of)).tail(args.last)
-        key = "day" if args.timeframe == "1d" else "week_of"
-        _out([{key: day.date().isoformat(), **_jsonable(row)} for day, row in frame.iterrows()])
+        _out([{"bar": _bar_label(ts, args.timeframe), **_jsonable(row)} for ts, row in frame.iterrows()])
     elif c == "patterns":
         df = load(conn, args.market, args.timeframe, args.as_of)
         _out({"market": args.market, "timeframe": args.timeframe,
-              "as_of": df.index[-1].date().isoformat() if len(df) else None, "patterns": patterns.active(df)})
+              "as_of": _bar_label(df.index[-1], args.timeframe) if len(df) else None, "patterns": patterns.active(df)})
     elif c == "backtest":
         spec = {"market": args.market, "pattern": args.pattern, "conditions": [parse_when(w) for w in args.when],
                 "exit": {"hold_days": args.hold, "stop_atr": args.stop_atr, "target_atr": args.target_atr}}
@@ -233,7 +268,30 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "predictions" and args.action == "score":
         _out(predictions.scorecard(conn, args.market))
     elif c == "evaluate":
-        _out(predictions.evaluate(conn))
+        _out({"predictions": predictions.evaluate(conn), "recommendations": recommendations.evaluate(conn)})
+    elif c == "scan":
+        counts = {r[0]: r[1] for r in conn.execute("SELECT market, count(*) FROM trials GROUP BY market")}
+        result = universe.scan(conn, args.as_of, sort=args.sort, trials_by_market=counts)
+        if args.pattern:
+            if args.pattern not in patterns.PATTERNS:
+                raise UsageError(f"unknown pattern {args.pattern!r}")
+            result["markets"] = [m for m in result["markets"] if args.pattern in m["active_patterns"]]
+            result["filtered_by_pattern"] = args.pattern
+        if args.limit:
+            result["markets"] = result["markets"][:args.limit]
+        _out(result)
+    elif c == "recommend":
+        try:
+            evidence = json.loads(args.evidence) if args.evidence else None
+        except json.JSONDecodeError as exc:
+            raise UsageError(f"--evidence is not valid JSON: {exc}") from exc
+        _out(recommendations.record(conn, args.market, args.horizon, args.rec_action, args.entry, args.invalidation,
+                                    args.risks, args.limitations, args.by, args.stop_atr, args.target_atr, evidence,
+                                    args.prediction, args.report))
+    elif c == "recommendations" and args.action == "list":
+        _out(recommendations.list_recommendations(conn, args.status, args.limit))
+    elif c == "recommendations" and args.action == "score":
+        _out(recommendations.score(conn))
     elif c == "report":
         print(report.write(conn, Path(args.dir)))
 

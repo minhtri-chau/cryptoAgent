@@ -123,6 +123,6 @@ def active(df: pd.DataFrame) -> dict:
     for name, fn in PATTERNS.items():
         signal = evaluate(name, df, i)
         out[name] = {"active": bool(signal.iloc[-1]) if len(signal) else False, "days_fired": int(signal.sum()),
-                     "last_fired": signal[signal].index[-1].date().isoformat() if signal.any() else None,
+                     "last_fired": signal[signal].index[-1].isoformat() if signal.any() else None,
                      "definition": (fn.__doc__ or "").strip()}
     return out

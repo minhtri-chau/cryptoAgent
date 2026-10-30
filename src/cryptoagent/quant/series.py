@@ -41,6 +41,27 @@ def load_daily(conn: sqlite3.Connection, spec: str, as_of: str | None = None) ->
     return frame.astype(float)
 
 
+def load_hourly(conn: sqlite3.Connection, spec: str, as_of: str | None = None) -> pd.DataFrame:
+    """Hourly candles indexed by the UTC hour they start, oldest first; `as_of` keeps hours of days up to it."""
+    rows = conn.execute(
+        "SELECT ts, open, high, low, close, volume FROM candles"
+        " WHERE market_id = ? AND timeframe = '1h' AND (? IS NULL OR substr(ts, 1, 10) <= ?) ORDER BY ts",
+        (market_id(conn, spec), as_of, as_of),
+    ).fetchall()
+    frame = pd.DataFrame([tuple(r) for r in rows], columns=["ts", *COLUMNS])
+    frame.index = pd.to_datetime(frame.pop("ts").str.rstrip("Z"))
+    return frame.astype(float)
+
+
+def to_4h(hourly: pd.DataFrame) -> pd.DataFrame:
+    """4-hour bars (00, 04, ... 20 UTC) from hourly candles; a bar is included once its last hour is stored."""
+    if hourly.empty:
+        return hourly
+    bars = hourly.resample("4h").agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+    bars = bars.dropna(subset=["close"])
+    return bars[bars.index + pd.Timedelta(hours=3) <= hourly.index[-1]]
+
+
 def to_weekly(daily: pd.DataFrame) -> pd.DataFrame:
     """ISO weeks (Monday start) built from daily candles, indexed by the week's Monday.
 
@@ -58,9 +79,13 @@ def to_weekly(daily: pd.DataFrame) -> pd.DataFrame:
 
 
 def load(conn: sqlite3.Connection, spec: str, timeframe: str = "1d", as_of: str | None = None) -> pd.DataFrame:
+    if timeframe == "1h":
+        return load_hourly(conn, spec, as_of)
+    if timeframe == "4h":
+        return to_4h(load_hourly(conn, spec, as_of))
     daily = load_daily(conn, spec, as_of)
     if timeframe == "1d":
         return daily
     if timeframe == "1w":
         return to_weekly(daily).drop(columns="days")
-    raise ValueError(f"unsupported timeframe {timeframe!r}; use 1d or 1w")
+    raise ValueError(f"unsupported timeframe {timeframe!r}; use 1h, 4h, 1d or 1w")

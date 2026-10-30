@@ -232,6 +232,49 @@ Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and
 6. The four subagents and `/investigate` exist, and one demo investigation produces a report whose every number traces back to a CLI output.
 7. The phase ends with a commit and an annotated `v0.3` tag.
 
+## v0.4 design: opportunity discovery and accountability
+
+- **Survivorship-free history.**
+  - Coinbase still serves candles for delisted products (verified 2026-10-30), so the collector also backfills every *delisted* USD market once. It starts from the market's last candle, which it fetches without a start date.
+  - A market's effective delisting date is its last candle. Status history only starts from our first run.
+- **Universe `universe-v1`** (`quant/universe.py`). These are point-in-time rules over trailing data only, so a past `--as-of` reproduces what was knowable then, including coins that were later delisted.
+  - Coinbase USD markets with a candle within the last 3 days of the as-of date.
+  - At least 200 days of history.
+  - Median daily dollar volume (close × volume) over the last 30 days of at least $1,000,000.
+  - The thresholds are the definition: changing one means a new version that the user approves.
+- **Scanner** (`scan`). For every market in the universe it reports:
+  - trend and volatility;
+  - returns relative to BTC over 30 and 90 days, as (1 + asset) / (1 + BTC) − 1;
+  - distance from SMA200, drawdown, RSI and ATR%;
+  - median dollar volume;
+  - active patterns, and the trials recorded for that market.
+  - It also gives counts of how many markets each filter removed.
+  - It ranks nothing by itself beyond a sort key that the caller chooses. Choosing candidates is reasoning, done by the `altcoin-scanner` subagent.
+- **Recommendation ledger** (migration 004). Append-only `recommendations`, bound by a trigger to the latest stored daily candle, like predictions.
+  - Fields: action (`buy`/`sell`/`hold`/`wait`/`no_trade`), horizon in days, entry and invalidation conditions, stop and target as ATR multiples, risks, limitations, evidence JSON, an optional linked prediction, and the report path.
+  - A `buy` must have a stop.
+  - `evaluate` resolves a recommendation mechanically once its horizon day's candle exists:
+    - a `buy` is simulated with the backtest engine: next-open entry, stop and target, time exit, costs;
+    - every recommendation also records the market's own close-to-close return over the horizon, which is the benchmark for `buy` and the outcome for `sell`/`hold`/`wait`/`no_trade`.
+- **Hourly data for BTC and ETH.** These come from Coinbase 1h candles, from listing. 4h candles are built from complete 1h candles, because Coinbase has no 4h granularity.
+  - Backfill state moves to a per-timeframe table, `market_backfill`.
+  - Indicators and patterns accept `--timeframe 1h|4h`.
+  - Backtests stay on daily bars in v0.4.
+- **Subagent `altcoin-scanner`** and skill **`/opportunities`**:
+  - BTC backdrop;
+  - then a scanner shortlist;
+  - then `/investigate` on at most three candidates, each ending in a recorded recommendation and prediction, including `no_trade`.
+
+## v0.4 acceptance criteria
+
+1. Delisted Coinbase USD markets have their full history stored. A test shows that a past `scan --as-of` includes a market that was later delisted.
+2. The universe filter uses trailing data only, which a no-look-ahead test checks.
+3. `scan` prints JSON with the universe, the filter counts and the per-market metrics.
+4. Recommendations are append-only and bound to the latest candle, and a `buy` needs a stop. `evaluate` resolves them with the backtest engine, and `recommendations score` summarises them by action, with sample sizes.
+5. BTC and ETH have 1h candles from listing, and 4h candles come only from complete 1h candles. Indicators and patterns run on 1h and 4h.
+6. The `altcoin-scanner` subagent and `/opportunities` exist, and `/investigate` records a recommendation.
+7. The daily task collects 1h data and the report includes a scanner section. The phase ends with a commit; the tag waits for the terms review.
+
 ## Main risks
 
 | Risk | Mitigation |

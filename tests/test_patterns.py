@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from cryptoagent.quant import patterns
-from cryptoagent.quant.series import to_weekly
+from cryptoagent.quant.series import to_4h, to_weekly
 
 
 def frame(close, high=None, low=None, start="2020-01-01"):
@@ -99,3 +99,12 @@ def test_weekly_bars_are_complete_weeks_only():
     first = weekly.iloc[0]
     assert (first["open"], first["high"], first["low"], first["close"], first["volume"], first["days"]) == \
         (1.0, 7.0, 1.0, 7.0, 7.0, 7)
+
+
+def test_4h_bars_come_from_complete_hourly_candles_only():
+    hours = pd.date_range("2024-01-01 00:00", periods=10, freq="h")  # 00:00 .. 09:00
+    hourly = pd.DataFrame({"open": range(1, 11), "high": range(1, 11), "low": range(1, 11), "close": range(1, 11),
+                           "volume": 1.0}, index=hours, dtype=float)
+    bars = to_4h(hourly)
+    assert list(bars.index.strftime("%H:%M")) == ["00:00", "04:00"]  # 08:00 bar has only 2 of 4 hours
+    assert tuple(bars.iloc[1][["open", "high", "low", "close", "volume"]]) == (5.0, 8.0, 5.0, 8.0, 4.0)

@@ -9,7 +9,8 @@ import pytest
 from cryptoagent.collectors.exchange import ExchangeCollector
 from tests.conftest import DAY, T0, candle
 
-NOW = T0 + 1000 * DAY + 13 * 3_600_000  # 13:00 UTC on day 1000: day 1000 is still forming
+HOUR = 3_600_000
+NOW = T0 + 1000 * DAY + 13 * HOUR + 20 * 60_000  # 13:20 UTC on day 1000: day 1000 and hour 13 still forming
 
 
 class FakeExchange:
@@ -20,6 +21,7 @@ class FakeExchange:
         self.series = series  # symbol -> list of candles
         self.statuses = statuses or {}
         self.fail_symbol, self.fail_times = fail_symbol, fail_times
+        self.hourly = {}
         self.calls = []
 
     def load_markets(self):
@@ -38,7 +40,11 @@ class FakeExchange:
         if symbol == self.fail_symbol and self.fail_times:
             self.fail_times -= 1
             raise ccxt.NetworkError("connection reset")
-        return [list(c) for c in self.series[symbol] if since <= c[0] < since + limit * DAY]
+        bar = DAY if timeframe == "1d" else HOUR
+        series = self.series[symbol] if timeframe == "1d" else self.hourly[symbol]
+        if since is None:  # like Coinbase: the most recent page
+            return [list(c) for c in series[-limit:]]
+        return [list(c) for c in series if since <= c[0] < since + limit * bar]
 
 
 def days(first, last):
@@ -62,7 +68,7 @@ def test_backfills_to_listing_and_skips_the_forming_day(conn, settings):
     assert len(ts) == 1000  # days 0..999; day 1000 is still forming at NOW
     assert ts[0] == "2023-11-14T00:00:00Z" and result["candles_added"] == 1000
     assert result["status"] == "succeeded"
-    assert conn.execute("SELECT history_start_found_at FROM markets WHERE symbol = 'BTC/USD'").fetchone()[0]
+    assert conn.execute("SELECT count(*) FROM market_backfill WHERE timeframe = '1d'").fetchone()[0] == 1
 
 
 def test_rerun_adds_nothing_and_next_day_adds_one(conn, settings):
@@ -125,7 +131,7 @@ def test_interrupted_backfill_resumes_from_the_earliest_stored_candle(conn, sett
     partial = StopAfterTwoPages(fake.series)
     collector(partial).collect(conn, settings)
     assert len(stored(conn)) == 600  # two pages of 300, newest first
-    assert conn.execute("SELECT history_start_found_at FROM markets").fetchone()[0] is None
+    assert conn.execute("SELECT count(*) FROM market_backfill").fetchone()[0] == 0
     collector(fake).collect(conn, settings)
     assert len(stored(conn)) == 1000
 
@@ -149,3 +155,32 @@ def test_fixed_symbol_list(conn, settings):
 def test_last_stored_candle_has_fully_closed(conn, settings, now):
     collector(FakeExchange({"BTC/USD": days(990, 1000)}), now=now).collect(conn, settings)
     assert stored(conn)[-1] == "2026-08-09T00:00:00Z"  # day 999 closed at the start of day 1000
+
+
+def test_delisted_markets_get_their_full_history_once(conn, settings):
+    """Survivorship: coins that were later delisted must be in the history, or every scan of the
+    past would only contain the winners that are still listed today."""
+    fake = FakeExchange({"BTC/USD": days(990, 1000), "OLD/USD": days(100, 700)}, statuses={"OLD/USD": "delisted"})
+    c = ExchangeCollector("coinbase", "coinbaseexchange", "test", 300, include_inactive=True,
+                          exchange_factory=lambda: fake, now_ms=lambda: NOW, sleep=lambda s: None)
+    result = c.collect(conn, settings)
+    assert result["inactive_backfilled"] == 1
+    ts = stored(conn, "OLD/USD")
+    assert len(ts) == 601 and ts[0] == "2024-02-22T00:00:00Z"  # days 100..700
+    fake.calls.clear()
+    assert c.collect(conn, settings)["inactive_backfilled"] == 0
+    assert all(symbol != "OLD/USD" for symbol, _ in fake.calls)  # not fetched again
+
+
+def test_hourly_bars_skip_the_forming_hour_and_track_backfill_separately(conn, settings):
+    fake = FakeExchange({"BTC/USD": days(990, 1000)})
+    start = T0 + 999 * DAY
+    fake.hourly["BTC/USD"] = [candle(start + h * HOUR) for h in range(0, 24 + 14)]  # through hour 13 of day 1000
+    collector(fake).collect(conn, settings)  # daily first
+    hourly = ExchangeCollector("coinbase-1h", "coinbaseexchange", "test", 300, symbols=["BTC/USD"], timeframe="1h",
+                               source="coinbase", exchange_factory=lambda: fake, now_ms=lambda: NOW)
+    result = hourly.collect(conn, settings)
+    assert result["source"] == "coinbase" and result["candles_added"] == 37  # hour 13 of day 1000 is still forming
+    timeframes = dict(conn.execute("SELECT timeframe, count(*) FROM candles GROUP BY 1").fetchall())
+    assert timeframes == {"1d": 10, "1h": 37}
+    assert {r[0] for r in conn.execute("SELECT timeframe FROM market_backfill")} == {"1d", "1h"}

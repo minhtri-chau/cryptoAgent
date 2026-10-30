@@ -7,8 +7,8 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from cryptoagent import predictions, quality
-from cryptoagent.quant import indicators, regime
+from cryptoagent import predictions, quality, recommendations
+from cryptoagent.quant import indicators, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
 REGIME_MARKET = "bitstamp:BTC/USD"   # one venue back to 2011, for cycle context
@@ -42,7 +42,8 @@ def _data_section(conn) -> list[str]:
         "  WHERE source_id = s.id ORDER BY id DESC LIMIT 1) AS last_run,"
         " (SELECT count(*) FROM markets WHERE source_id = s.id) AS markets,"
         " coalesce((SELECT substr(max(c.ts), 1, 10) FROM candles c JOIN markets m ON m.id = c.market_id"
-        "  WHERE m.source_id = s.id), (SELECT max(day) FROM reference_prices WHERE source_id = s.id)) AS latest"
+        "  WHERE m.source_id = s.id AND c.timeframe = '1d'),"
+        " (SELECT max(day) FROM reference_prices WHERE source_id = s.id)) AS latest"
         " FROM sources s ORDER BY s.name"
     ).fetchall()
     yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
@@ -126,13 +127,47 @@ def _scorecard_section(conn) -> list[str]:
     return lines
 
 
+def _scanner_section(conn) -> list[str]:
+    result = universe.scan(conn)
+    c = result["counts"]
+    lines = [f"## Scanner ({result['version']}, as of {result['as_of']})", "",
+             f"{c['universe']} liquid markets out of {c['markets_with_history']} with history "
+             f"(stale or delisted {c['stale']}, under {universe.MIN_HISTORY_DAYS} days {c['short_history']}, "
+             f"median 30-day dollar volume under ${universe.MIN_MEDIAN_DOLLAR_VOLUME:,.0f} {c['illiquid']}).", ""]
+    with_setups = [m for m in result["markets"] if m["active_patterns"]]
+    if not with_setups:
+        return lines + ["No defined setup is active in the universe today."]
+    lines += ["Markets with an active setup, by 90-day return relative to BTC. Facts only: a setup here is untested "
+              "for that market until `/investigate` says otherwise.", "",
+              "| Market | Setups | RS 90d vs BTC | RS 30d | Trend | Dev. from SMA200 | Median $ volume |",
+              "|---|---|---|---|---|---|---|"]
+    for m in with_setups[:15]:
+        lines.append(f"| {m['market']} | {', '.join(m['active_patterns'])} | {_fmt(m['rs90'], 'pct')} | "
+                     f"{_fmt(m['rs30'], 'pct')} | {m['trend'] or 'unavailable'} | {_fmt(m['sma200_dev'], 'pct')} | "
+                     f"{m['median_dollar_volume']:,.0f} |")
+    return lines
+
+
+def _recommendations_section(conn) -> list[str]:
+    scores = recommendations.score(conn)
+    lines = ["## Recommendations", ""]
+    if not scores:
+        return lines + ["None recorded yet."]
+    lines += ["| Action | Recorded | Open | Resolved | Mean market return | Mean trade return (buys) |",
+              "|---|---|---|---|---|---|"]
+    for s in scores:
+        lines.append(f"| {s['action']} | {s['recommendations']} | {s['open']} | {s['resolved']} | "
+                     f"{_fmt(s.get('mean_market_return'), 'pct')} | {_fmt(s.get('mean_trade_return'), 'pct')} |")
+    return lines
+
+
 def render(conn: sqlite3.Connection) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     sections = [
         [f"# Daily market report", "", f"Generated {now}. Deterministic output: every number comes from stored data "
          "and the code in this repository; there is no AI interpretation here. Not financial advice."],
         _data_section(conn), _regime_section(conn), _indicator_section(conn), _predictions_section(conn),
-        _scorecard_section(conn),
+        _scorecard_section(conn), _recommendations_section(conn), _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "
          "Bitstamp public market data."],
     ]
