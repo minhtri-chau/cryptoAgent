@@ -98,9 +98,17 @@ def roc(close: pd.Series, n: int) -> pd.Series:
     return close / close.shift(n) - 1
 
 
+def bars_per_year(index: pd.DatetimeIndex) -> float:
+    """365 for daily bars, 52.18 for weekly bars, inferred from the typical spacing of the index."""
+    if len(index) < 2 or not isinstance(index, pd.DatetimeIndex):
+        return float(DAYS_PER_YEAR)
+    spacing_days = pd.Series(index).diff().dt.days.median()
+    return DAYS_PER_YEAR / spacing_days
+
+
 def realized_vol(close: pd.Series, n: int = 30) -> pd.Series:
-    """Annualised standard deviation of daily log returns over n days."""
-    return np.log(close).diff().rolling(n).std() * np.sqrt(DAYS_PER_YEAR)
+    """Annualised standard deviation of log returns over n bars (daily or weekly)."""
+    return np.log(close).diff().rolling(n).std() * np.sqrt(bars_per_year(close.index))
 
 
 def drawdown_from_ath(close: pd.Series) -> pd.Series:
@@ -140,12 +148,18 @@ def last_pivots(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
 
 
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
-    """The standard daily indicator set used by reports and regime classification."""
+    """The standard indicator set used by reports, patterns and regime classification.
+
+    Periods are counted in bars: on weekly bars `sma50` is 50 weeks and `roc7` is 7 weeks.
+    Only `vol30` is annualised, using the bar spacing.
+    """
     close = df["close"]
     out = pd.DataFrame(index=df.index)
     out["close"] = close
     for n in (20, 50, 200):
         out[f"sma{n}"] = sma(close, n)
+    for n in (50, 200):
+        out[f"sma{n}_change20"] = out[f"sma{n}"] / out[f"sma{n}"].shift(20) - 1  # slope over 20 bars
     out["ema200"] = ema(close, 200)
     out["ema200_dev"] = deviation(close, out["ema200"])
     out["rsi14"] = rsi(close, 14)

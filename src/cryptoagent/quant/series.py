@@ -39,3 +39,28 @@ def load_daily(conn: sqlite3.Connection, spec: str, as_of: str | None = None) ->
     frame = pd.DataFrame([tuple(r) for r in rows], columns=["day", *COLUMNS])
     frame.index = pd.to_datetime(frame.pop("day"))
     return frame.astype(float)
+
+
+def to_weekly(daily: pd.DataFrame) -> pd.DataFrame:
+    """ISO weeks (Monday start) built from daily candles, indexed by the week's Monday.
+
+    A week is included only once its Sunday is in `daily`, so the last bar is never a week
+    still in progress. `days` counts the daily candles in the week (7 unless the exchange
+    had no trades on some day, or the market listed mid-week).
+    """
+    if daily.empty:
+        return daily.assign(days=pd.Series(dtype=int))
+    weekly = daily.resample("W-MON", label="left", closed="left").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+    weekly["days"] = daily["close"].resample("W-MON", label="left", closed="left").count()
+    weekly = weekly[weekly["days"] > 0]
+    return weekly[weekly.index + pd.Timedelta(days=6) <= daily.index[-1]]
+
+
+def load(conn: sqlite3.Connection, spec: str, timeframe: str = "1d", as_of: str | None = None) -> pd.DataFrame:
+    daily = load_daily(conn, spec, as_of)
+    if timeframe == "1d":
+        return daily
+    if timeframe == "1w":
+        return to_weekly(daily).drop(columns="days")
+    raise ValueError(f"unsupported timeframe {timeframe!r}; use 1d or 1w")

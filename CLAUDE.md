@@ -41,6 +41,13 @@ v0.2 commands:
 - `evaluate`
 - `report` (writes `reports/YYYY-MM-DD.md`)
 
+v0.3 commands:
+- `indicators|patterns SOURCE:SYMBOL [--timeframe 1d|1w] [--as-of]`
+- `backtest --market --pattern [--when "[MARKET] FIELD OP VALUE" ...] --hold N [--stop-atr K] [--target-atr M] --period train|validation|test --family --hypothesis --by [--trades]`: every run is recorded as a trial
+- `trials list [--family] | families | show ID`: `show` prints every stored result, so any reported number can be traced
+
+Research workflow: `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives four subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`. Reports go to `reports/research/`.
+
 The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality → evaluate → baselines → report) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
 
 Every command that reads data prints JSON. Validation errors exit with status 2. Pass `--db <path>` to run against a scratch database.
@@ -67,6 +74,19 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - Outcomes must use the stored target-day close.
   - `source` is `model` (deterministic base rates, recorded daily) or `judgment` (Claude), and the scorecard compares each against `base_rate_v1`.
 - **report** (`report.py`): the deterministic daily report.
+- **patterns** (`quant/patterns.py`): the only setups that can be backtested.
+  - Each is a function with a docstring definition, a hand-worked test and a no-look-ahead test.
+  - Add new ideas here as code. Subjective chart patterns aren't allowed.
+  - Conditions filter signals by any indicator or regime field of any market on the same day.
+- **backtest** (`quant/backtest.py`): pure daily-bar engine.
+  - Signal at close t, entry at open t+1.
+  - ATR stops fill at the gap open when the price gaps through.
+  - Costs on both sides, one position at a time.
+  - The period end closes open trades, so no later prices are ever used.
+- **trials** (`trials.py`, migration 003): every backtest is recorded, append-only, failures included, with its family and hypothesis.
+  - Chronological periods are the same for every market: train to 2021-12-31, validation 2022-01-01 to 2024-06-30, test from 2024-07-01.
+  - The test period is **sealed**: the database allows one run per specification, and only after validation.
+  - Never run `--period test` unless the user explicitly asks.
 - **reasoning**: Claude skills and subagents in `.claude/`. They read the CLI's JSON output and write back only through CLI commands, so another AI provider can drive the same CLI later.
 
 Secrets come from `.env` (gitignored) through `load_settings().secret("NAME")`, which returns a `Secret`. Use `.reveal()` only at the point of the HTTP call, and strip keys from any logged URL.

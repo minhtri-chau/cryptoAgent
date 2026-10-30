@@ -13,12 +13,14 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import db, predictions, quality, report
+from cryptoagent import db, predictions, quality, report, trials
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
-from cryptoagent.quant import indicators, regime
-from cryptoagent.quant.series import UnknownMarket, load_daily
+from cryptoagent.quant import indicators, patterns, regime
+from cryptoagent.quant.backtest import Costs
+from cryptoagent.quant.patterns import SpecError
+from cryptoagent.quant.series import UnknownMarket, load, load_daily
 
 
 class UsageError(Exception):
@@ -31,6 +33,19 @@ def _out(data) -> None:
 
 def _jsonable(row) -> dict:
     return {k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
+
+
+def parse_when(text: str) -> dict:
+    """'[MARKET] FIELD OP VALUE', e.g. 'bitstamp:BTC/USD sma50_change20 > 0' or 'trend == uptrend'."""
+    parts = text.split()
+    if len(parts) not in (3, 4) or parts[-2] not in patterns.OPS:
+        raise UsageError(f"--when expects '[MARKET] FIELD OP VALUE' with OP in {' '.join(patterns.OPS)}; got {text!r}")
+    *market, field, op, raw = parts
+    try:
+        value = float(raw)
+    except ValueError:
+        value = raw
+    return {**({"market": market[0]} if market else {}), "field": field, "op": op, "value": value}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,10 +76,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
     p.add_argument("--last", type=int, default=30, help="number of most recent candles")
 
-    p = cmd.add_parser("indicators", help="indicator values for one market (latest day, or as of a past day)")
+    p = cmd.add_parser("indicators", help="indicator values for one market (latest bar, or as of a past day)")
     p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
     p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
-    p.add_argument("--last", type=int, default=1, help="number of most recent days")
+    p.add_argument("--last", type=int, default=1, help="number of most recent bars")
+    p.add_argument("--timeframe", choices=["1d", "1w"], default="1d")
+
+    p = cmd.add_parser("patterns", help="which defined setups are active on the latest bar, with their history")
+    p.add_argument("market", help="SOURCE:SYMBOL")
+    p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
+    p.add_argument("--timeframe", choices=["1d", "1w"], default="1d")
+
+    p = cmd.add_parser("backtest", help="backtest one setup on a chronological period; always recorded as a trial")
+    p.add_argument("--market", required=True)
+    p.add_argument("--pattern", required=True, choices=list(patterns.PATTERNS))
+    p.add_argument("--when", action="append", default=[], metavar="'[MARKET] FIELD OP VALUE'",
+                   help="filter condition on the signal day; repeatable (all must hold)")
+    p.add_argument("--hold", type=int, required=True, help="time exit: close of signal day + N")
+    p.add_argument("--stop-atr", type=float, help="stop at entry - K x ATR14")
+    p.add_argument("--target-atr", type=float, help="target at entry + M x ATR14")
+    p.add_argument("--period", required=True, choices=list(trials.PERIODS))
+    p.add_argument("--family", required=True, help="short name grouping variants of one idea")
+    p.add_argument("--hypothesis", required=True, help="what this run tests, stated before seeing results")
+    p.add_argument("--by", required=True, help="who ran it, e.g. claude or user")
+    p.add_argument("--fee", type=float, default=Costs.fee, help="per side (placeholder until confirmed)")
+    p.add_argument("--slippage", type=float, default=Costs.slippage, help="per side")
+    p.add_argument("--trades", action="store_true", help="include the trade list")
+
+    tr = cmd.add_parser("trials", help="the trial registry").add_subparsers(dest="action", required=True)
+    p = tr.add_parser("list")
+    p.add_argument("--family")
+    p.add_argument("--limit", type=int, default=50)
+    tr.add_parser("families", help="trial counts per hypothesis family")
+    p = tr.add_parser("show", help="everything recorded for one trial (results, forward returns, cost sensitivity)")
+    p.add_argument("id", type=int)
 
     p = cmd.add_parser("regime", help=f"{regime.VERSION} labels (descriptive, not trade signals)")
     p.add_argument("--market", default=report.REGIME_MARKET)
@@ -153,8 +198,24 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         ).fetchall()
         _out([dict(r) for r in reversed(rows)])
     elif c == "indicators":
-        frame = indicators.compute_all(load_daily(conn, args.market, args.as_of)).tail(args.last)
-        _out([{"day": day.date().isoformat(), **_jsonable(row)} for day, row in frame.iterrows()])
+        frame = indicators.compute_all(load(conn, args.market, args.timeframe, args.as_of)).tail(args.last)
+        key = "day" if args.timeframe == "1d" else "week_of"
+        _out([{key: day.date().isoformat(), **_jsonable(row)} for day, row in frame.iterrows()])
+    elif c == "patterns":
+        df = load(conn, args.market, args.timeframe, args.as_of)
+        _out({"market": args.market, "timeframe": args.timeframe,
+              "as_of": df.index[-1].date().isoformat() if len(df) else None, "patterns": patterns.active(df)})
+    elif c == "backtest":
+        spec = {"market": args.market, "pattern": args.pattern, "conditions": [parse_when(w) for w in args.when],
+                "exit": {"hold_days": args.hold, "stop_atr": args.stop_atr, "target_atr": args.target_atr}}
+        _out(trials.run_trial(conn, spec, args.period, args.family, args.hypothesis, args.by,
+                              Costs(args.fee, args.slippage), include_trades=args.trades))
+    elif c == "trials" and args.action == "list":
+        _out(trials.list_trials(conn, args.family, args.limit))
+    elif c == "trials" and args.action == "families":
+        _out(trials.families(conn))
+    elif c == "trials" and args.action == "show":
+        _out(trials.show(conn, args.id))
     elif c == "regime":
         _out(regime.snapshot(load_daily(conn, args.market, args.as_of)))
     elif c == "predict" and args.action == "add":
@@ -188,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             print("database has pending migrations; run `python -m cryptoagent init-db` first", file=sys.stderr)
             return 2
         run(args, conn, settings)
-    except (UsageError, UnknownMarket, LedgerError) as exc:
+    except (UsageError, UnknownMarket, LedgerError, SpecError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except sqlite3.IntegrityError as exc:

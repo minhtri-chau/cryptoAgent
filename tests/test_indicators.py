@@ -92,3 +92,11 @@ def test_no_lookahead(cut):
     garbage["low"] = garbage[["open", "high", "low", "close"]].min(axis=1)
     pd.testing.assert_frame_equal(ind.compute_all(garbage).iloc[:cut + 1], reference)
     pd.testing.assert_frame_equal(ind.compute_all(DF.iloc[:cut + 1]), reference)
+
+
+def test_weekly_volatility_is_annualised_with_weekly_bars():
+    """Annualising weekly returns with sqrt(365) overstated weekly volatility by ~2.6x (found in review)."""
+    weekly = DF.resample("W-MON", label="left", closed="left").agg({"close": "last"})
+    expected = np.log(weekly["close"]).diff().rolling(30).std() * np.sqrt(365 / 7)
+    np.testing.assert_allclose(ind.realized_vol(weekly["close"], 30).dropna(), expected.dropna())
+    assert ind.bars_per_year(DF.index) == 365

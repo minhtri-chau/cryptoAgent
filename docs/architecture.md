@@ -21,6 +21,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | Copy and adapt tcgAgent's proven patterns (numbered SQL migrations, append-only tables enforced by triggers, JSON CLI, collector protocol, user-only approvals). No shared library. |
 | 2026-10-30 | The user is in the US. Providers that are unavailable to US persons are excluded. |
 | 2026-10-30 | Start from exchange data. Nothing is imported from the earlier Crypto Asymmetry Engine; its ideas (e.g. 200-day EMA deviation bands at −37.5/−60/−75%) enter only as hypotheses to test. |
+| 2026-10-30 | Phases re-ordered to the user's "Crypto Intelligence Agent 2.0" notes: v0.3 becomes the first working trading researcher (backtests, patterns and specialist subagents together). Altcoin scanning, hourly/4h data and macro data move to v0.4–v0.5. Hourly data starts with BTC and ETH only. FRED terms must be verified before any macro data is used. |
 
 ## Principles
 
@@ -85,11 +86,12 @@ cli           every reading command prints JSON; validation errors exit with sta
   - `/recommend`
   - `/predict`
   - `/research`
-- **Subagents (v0.5–v0.7):**
-  - `btc-regime`
-  - `alt-scout`
-  - `strategy-researcher`: records every trial.
-  - `skeptic`: gets fresh context and is given the evidence, not the conclusion. It attacks recommendations for look-ahead bias, small samples, unmodelled costs and dependence on a single regime.
+- **Subagents (v0.3):**
+  - `bitcoin-analyst`
+  - `technical-analyst`
+  - `quant-researcher`: records every trial.
+  - `risk-reviewer`: gets fresh context and is given the evidence, not the conclusion. It attacks recommendations for look-ahead bias, small samples, unmodelled costs and dependence on a single regime.
+- **Later subagent:** `altcoin-scanner` (v0.4).
 
 ## Schema (target; built incrementally)
 
@@ -114,11 +116,11 @@ cli           every reading command prints JSON; validation errors exit with sta
 |---|---|
 | v0.1 | Foundation and data: CLI, migrations, Coinbase daily candles (BTC and the current USD universe), long BTC history, quality checks, scheduled daily collect, `docs/data-sources.md` |
 | v0.2 | Indicator library with reference tests; rule-based BTC regime and cycle state; deterministic daily report; prediction ledger and scoring (starts the forward-test clock) |
-| v0.3 | Backtest engine, cost model, walk-forward, trial registry, benchmarks; baseline strategies including the EMA-band hypothesis |
-| v0.4 | Recommendation ledger; skills; scoring of `judgment` vs `model` predictions |
-| v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n); `btc-regime` and `skeptic` subagents |
-| v0.6 | Altcoins: point-in-time universe, liquidity and volatility filters, relative strength vs BTC, delisting handling; `alt-scout` |
-| v0.7 | Hourly data (Parquet/DuckDB if needed), short-term horizon, fundamentals, research knowledge base |
+| v0.3 | First working trading researcher: weekly candles, explicit patterns, backtest engine (costs, chronological splits, sealed test period), trial registry including failures, subagents (bitcoin-analyst, technical-analyst, quant-researcher, risk-reviewer), `/investigate` skill and structured report |
+| v0.4 | Altcoin scanner (point-in-time universe, liquidity filters, relative strength vs BTC, delisting handling); recommendation ledger; 1h/4h data for BTC and ETH |
+| v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n); macro data (FRED, once its terms are verified) |
+| v0.6 | Walk-forward evaluation across many windows; hourly data for the wider universe if needed (Parquet/DuckDB) |
+| v0.7 | Fundamentals (DefiLlama) and research knowledge base |
 | v0.8 | Strategy improvement loop: proposal → trials → holdout → paper forward test → user approval |
 | v0.9 | ML baselines, compared against the simple models on the same validation |
 | v1.0 | Automated model interface (Claude API or another provider) |
@@ -183,6 +185,52 @@ Out of scope for v0.1: indicators, backtests, recommendations, subagents and ML.
 7. The phase ends with a commit and an annotated `v0.2` tag.
 
 Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and altcoin screens.
+
+## v0.3 design: the first working trading researcher
+
+- **Weekly candles:** built from stored daily candles as ISO weeks (Monday start). A week is included only once its Sunday is stored.
+- **Patterns** (`quant/patterns.py`): explicit setups, each true or false at the close of day t and computed from bars up to t only.
+  - `breakout_20`, `breakout_55`: close above the highest high of the previous n days (Donchian).
+  - `breakdown_20`: close below the lowest low of the previous 20 days.
+  - `pullback_sma50`: uptrend structure (close > SMA200, SMA50 > SMA200). The day's low comes within 2% of SMA50, or below it, and the close is back above it.
+  - `squeeze`: Bollinger bandwidth in the lowest 10% of the previous 365 days.
+  - `higher_highs_lows`: the last two confirmed pivot highs and the last two confirmed pivot lows are both rising.
+  - `oversold_uptrend`: RSI 14 below 30 while the close is above SMA200.
+  - `ema200_band_37`, `ema200_band_60`: close at least 37.5% / 60% below EMA200. This is the Crypto Asymmetry Engine hypothesis.
+  - Anything not on this list has to be added as code with tests before it can be backtested. Subjective chart patterns aren't allowed.
+- **Conditions:** a signal can be filtered by any indicator or regime field of any market on the same day, e.g. "only when `bitstamp:BTC/USD` `sma50_change20` > 0". This lets hypotheses like "altcoin breakouts work better when BTC's 50-day average is rising" be tested without code changes.
+- **Backtest engine** (`quant/backtest.py`): long-only spot, one position at a time per test.
+  - Entry: a signal at the close of t buys at the open of t+1.
+  - Exit: the first of a time exit (hold N days, sold at the close), a stop at entry − k × ATR14 (filled at the stop, or at the open if the price gaps through it), or an optional target at entry + m × ATR14.
+  - Costs: a fee and slippage on each side. The default is 0.6% + 0.2%, flagged `costs_confirmed: false` until the user confirms their fee tier. Every result also shows zero-cost and double-cost versions.
+  - Output:
+    - trade count, win rate, mean and median trade return, with a bootstrap 90% confidence interval for the mean;
+    - profit factor, worst trade, MAE/MFE;
+    - exposure, maximum drawdown of the strategy's equity;
+    - a buy-and-hold benchmark over the same period (a same-exposure benchmark is not built yet);
+    - the forward return after signals compared with all days.
+- **Chronological splits**, the same dates for every market so BTC conditions can't leak across assets:
+  - train: up to 2021-12-31;
+  - validation: 2022-01-01 to 2024-06-30;
+  - test: 2024-07-01 onwards, **sealed**.
+  - A specification can be run on test only after it has a validation trial, and only once. The database enforces this.
+- **Trial registry** (migration 003): every backtest run is recorded, append-only, failures included, with its hypothesis, the full specification and its hash, period, costs and results. Results show how many trials have been run in total and in this hypothesis family, so a good-looking result can be weighed against how many attempts produced it.
+- **Subagents** (`.claude/agents/`) read the CLI's JSON and never compute numbers themselves:
+  - `bitcoin-analyst`: regime, cycle and BTC context.
+  - `technical-analyst`: indicators, structure and active patterns, across daily and weekly.
+  - `quant-researcher`: turns hypotheses into specifications and runs train/validation backtests.
+  - `risk-reviewer`: starts fresh and is given the evidence, not the conclusion. It attacks the thesis.
+- **`/investigate <market>`** (`.claude/skills/investigate/`) orchestrates them. It writes a structured report to `reports/research/` and may record a `judgment` prediction.
+
+## v0.3 acceptance criteria
+
+1. Weekly candles are built only from complete weeks, with a test.
+2. Every pattern has a hand-worked test and passes the no-look-ahead test.
+3. The backtest engine is tested for next-open entry, cost arithmetic, stop fills including gaps, no overlapping positions, and no trade opened without a next bar.
+4. The test period can't be run twice or before validation for the same specification, enforced in the database. Trials are append-only.
+5. `cryptoagent patterns`, `backtest` and `trials` print JSON, and `backtest` records a trial every time it runs.
+6. The four subagents and `/investigate` exist, and one demo investigation produces a report whose every number traces back to a CLI output.
+7. The phase ends with a commit and an annotated `v0.3` tag.
 
 ## Main risks
 
