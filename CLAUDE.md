@@ -64,6 +64,13 @@ v0.7 commands:
 - `note add --topic --subject --status fact|hypothesis --text [--confidence] --cite url:|trial:|prediction:|claim: [--quote] [--review-after] [--supersedes] --by agent|user`
 - `note list [--topic] [--subject] [--status] [--due] [--all]`
 
+v0.8 commands (strategy lifecycle, `promotion-v1`):
+- `strategy propose --name --market --pattern [--when] --hold [--stop-atr] [--target-atr] --rationale --by agent|user`
+- `strategy check NAME`: the validation gate on stored trials of the same spec
+- `strategy test NAME --by`: the sealed test, once; only after the user's `authorize-test`
+- `strategy list`, `strategy paper` (daily), `strategy signals`
+- **User only:** `strategy authorize-test|approve|reject|retire NAME --by user`
+
 Research workflows:
 - `/research <topic or coin>`: web research saved as cited claims.
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
@@ -116,6 +123,11 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
 - **fundamentals** (`collectors/defillama.py`, `fundamentals.py`, migration 006): daily DefiLlama snapshots only, with no back-filled history, summed per protocol family and kept for Coinbase-listed tokens.
   - Ratios (price to fees and to revenue) are computed in Python.
   - The data is stored privately as the user's accepted risk. Never republish or share the database.
+- **strategies** (`strategies.py`, migration 007): the `promotion-v1` lifecycle.
+  - Stages: proposed → validation gate → user-authorised sealed test → paper forward test → review → user approval.
+  - Stages are append-only events. A trigger allows only listed transitions and reserves authorise, approve, reject and retire for `decided_by = 'user'`.
+  - Paper trades are bound to the latest candle, one is open per market, and they are resolved by replay with costs.
+  - Approved strategies' signals appear in the daily report for the user to consider; nothing is traded.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.
@@ -140,6 +152,9 @@ Secrets come from `.env` (gitignored) through `load_settings().secret("NAME")`, 
 - **Never invent prices, probabilities or backtest results.** Every number must trace back to a stored row or a reproducible computation. If data is missing, say "unavailable".
 - **No look-ahead.** A value computed for time t may use only data observed at or before t. Universe membership, fundamentals and listings are point-in-time.
 - **Record every trial.** Every strategy variant that is backtested goes into the trial registry, failures included. Results are reported together with the number of trials run.
+- **Never take the user's decisions.**
+  - Never run `strategy authorize-test`, `approve`, `reject` or `retire`, and never pass `--by user` on any command. The database rejects these events from anyone but `user`, and that flag is the user's alone.
+  - Proposing a strategy and running `check` and `test` is fine once authorised.
 - **Strategy changes need approval.** Strategies, rules and thresholds are versioned proposals. Only the user approves them; never run an `approve` command yourself. Promotion requires out-of-sample and forward-test evidence.
 - **No trading.** Never build or call order, trade, transfer or withdrawal endpoints, and never handle exchange API keys that have trading permissions. Public market data only.
 - **Respect provider terms.** Don't use a source whose terms exclude this use, or that is unavailable to US persons.

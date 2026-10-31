@@ -26,6 +26,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | **analog-v1 did not beat the base rate.** In train (bitstamp:BTC/USD), Brier skill was −4.8% at 30 days (trial 19, 111 dates) and −5.3% at 90 days (trial 20, 36 dates); both CIs include 0. Validation was not run. Analogues stay as context in reports and as forward-tracked `analog_v1` predictions, but they aren't used for decisions. |
 | 2026-10-30 | **FRED not used yet.** Its terms forbid storing, caching or archiving FRED content without the Bank's prior written consent. Personal-use downloading is allowed, but this project stores data by design. Macro integration waits on the user's decision (see `docs/data-sources.md`). |
 | 2026-10-31 | **First pooled test (trial 21):** oversold 20-day breakdowns with BTC above its EMA200, across universe-v2, in train. 81 trades but only 23 distinct signal weeks; week-clustered CI90 (−6.0%, +12.6%); returns after the signal below drift; positive in 2 of 6 years. Not supported, so validation was not run. |
+| 2026-10-31 | **promotion-v1 thresholds approved by the user** as written in the v0.8 design (validation: 30+ trades, CI90 low > 0, positive at double costs, beats drift, positive in at least half the years, train mean > 0; sealed test: 10+ trades, positive, positive at double costs; paper: 90+ days, 10+ resolved trades, positive after costs). |
 | 2026-10-31 | **User decision: store DefiLlama data privately, as an accepted risk.** DefiLlama's terms (24 June 2025) grant a "personal, non-commercial" licence to the official public API but don't address local storage. Clause 8(1) forbids "copy the materials"; the other bans are mirroring "on another server", republishing and commercial use; clause 14 sets liquidated damages of up to USD 100,000 per violation. Conditions: the database stays private and is never republished or shared, at most one polite collection per day, and every row keeps its source and collection time. |
 | 2026-10-30 | **User decision: skip macro data for now.** No FRED collector or other macro source. To revisit: written consent from FRED, display-only fetching, or another source with storage-friendly terms. |
 
@@ -127,7 +128,7 @@ cli           every reading command prints JSON; validation errors exit with sta
 | v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n). Macro data deferred by user decision. |
 | v0.6 | Stability by year in every backtest; pooled cross-market backtests over the point-in-time universe, with week-clustered CIs. Walk-forward optimisation and hourly data for the wider universe were deliberately not built (see the v0.6 design). |
 | v0.7 | Research knowledge base and DefiLlama fundamentals (daily point-in-time snapshots) |
-| v0.8 | Strategy improvement loop: proposal → trials → holdout → paper forward test → user approval |
+| v0.8 | Strategy improvement loop: proposal → validation gate → user-authorised sealed test → paper forward test → user approval |
 | v0.9 | ML baselines, compared against the simple models on the same validation |
 | v1.0 | Automated model interface (Claude API or another provider) |
 
@@ -378,6 +379,46 @@ Every opportunity investigation so far ended with samples of 0–10 trades per c
 2. Fundamentals: families are summed correctly, one snapshot is stored per day, an as-of query before the first snapshot is empty, ratios are unavailable without a market cap, and rows are append-only.
 3. `note`, `fundamentals` and `scan` print JSON, and the daily task collects DefiLlama.
 4. `/research`, the altcoin scanner and `/investigate` use the knowledge base and fundamentals.
+
+## v0.8 design: the strategy improvement loop
+
+A strategy is a backtest specification (single market or pooled universe) that has earned the right to generate signals. A strategy moves through stages, each recorded as an append-only event, and only the user can approve it:
+
+```
+proposed ──check──▶ validation_passed ──(user: authorize-test)──▶ test_authorized ──test──▶ test_passed ──▶ paper ──review──▶ paper_review ──(user)──▶ approved
+    │                     │                                                                  │                         │                    └──▶ rejected
+    └─▶ validation_failed └───────────────────────────────────────────────────────────────── test_failed                └─ (paper gate not met yet: keeps running)
+approved ──(user)──▶ retired
+```
+
+| Stage | Who | Gate (`promotion-v1`) |
+|---|---|---|
+| propose | Claude or the user | A spec plus its train and validation trial IDs. Each strategy name is versioned, and a change is a new version. |
+| check | system | The validation trial of the same spec must have: at least 30 trades; CI90 lower bound > 0; mean > 0 at double costs; forward return after signals above all days; and a positive mean in at least half the years with trades. The train trial must exist and have a positive mean. |
+| authorize-test | **user only** | The sealed test period gives each spec one look, so spending it is the user's decision. |
+| test | system | Runs the sealed test trial once. It must have at least 10 trades, mean > 0, and mean > 0 at double costs. |
+| paper | system, daily | On each new candle, the spec is evaluated on the latest day. A signal records a paper trade bound to that candle; the database refuses back-dated trades. One open paper trade per market per strategy. Trades are replayed with the backtest engine (next open, stop, target, time exit, costs) once their horizon has passed. |
+| review | system | At least 90 days of paper trading, at least 10 resolved trades, and a mean paper return > 0 after costs. Until then the strategy stays in paper. |
+| approve / reject / retire | **user only** | Recorded with `decided_by = 'user'`, which a trigger enforces. Claude never runs these. |
+
+- **Approved strategies** show their signals in the daily report. These are signals for the user to consider; nothing is ever traded automatically.
+- **The thresholds are the definition of `promotion-v1`.** Changing one makes a new version, which the user approves.
+- **Multiple testing:** each check reports the number of trials in the spec's family and in total, so the user sees how much searching sits behind a pass.
+
+## v0.8 acceptance criteria
+
+1. Strategy versions and events are append-only.
+   - Approve, reject, retire and authorize-test require `decided_by = 'user'` (a trigger).
+   - Events can only follow the allowed transitions.
+2. `check` passes or fails exactly on the `promotion-v1` validation gate, using stored trials of the same spec hash.
+3. `test` refuses without user authorisation and runs the sealed test once.
+4. Paper trades are bound to the latest candle, one is open per market, and they are resolved by replay with costs. The review gate is applied mechanically.
+5. The daily task records and evaluates paper trades, and the report lists strategies by stage and the signals of approved strategies.
+6. Commit. The `promotion-v1` thresholds are presented to the user for approval (approved 2026-10-31).
+
+Notes:
+- The test step needs the validation trial of the same spec hash. It's the same rule the database enforces for any test-period run.
+- A delisted market's open paper trade stays unresolved until candles exist past its horizon. That never happens, so it stays open; the review gate counts only resolved trades.
 
 ## Main risks
 

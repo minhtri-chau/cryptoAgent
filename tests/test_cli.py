@@ -17,7 +17,7 @@ def test_init_then_read_commands_print_json(tmp_path, capsys):
     path = str(tmp_path / "t.db")
     assert main(["--db", path, "init-db"]) == 0
     assert json.loads(capsys.readouterr().out)["applied"] == ["001_market_data.sql", "002_predictions.sql", "003_trials.sql",
-                                                                 "004_hourly_and_recommendations.sql", "005_research.sql", "006_fundamentals.sql"]
+                                                                 "004_hourly_and_recommendations.sql", "005_research.sql", "006_fundamentals.sql", "007_strategies.sql"]
     assert main(["--db", path, "markets"]) == 0
     assert json.loads(capsys.readouterr().out) == []
     assert main(["--db", path, "quality"]) == 0

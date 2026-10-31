@@ -13,7 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import db, fundamentals, predictions, quality, recommendations, report, research, trials
+from cryptoagent import (db, fundamentals, predictions, quality, recommendations, report, research, strategies,
+                         trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -167,6 +168,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--family", required=True)
     p.add_argument("--hypothesis", required=True)
     p.add_argument("--by", required=True)
+
+    st = cmd.add_parser("strategy", help=f"strategy lifecycle ({strategies.POLICY})").add_subparsers(
+        dest="action", required=True)
+    p = st.add_parser("propose", help="propose a backtested spec as a strategy (a new version if the name exists)")
+    p.add_argument("--name", required=True)
+    p.add_argument("--market", required=True, help="SOURCE:SYMBOL or universe:universe-v2")
+    p.add_argument("--pattern", required=True, choices=list(patterns.PATTERNS))
+    p.add_argument("--when", action="append", default=[], metavar="'[MARKET] FIELD OP VALUE'")
+    p.add_argument("--hold", type=int, required=True)
+    p.add_argument("--stop-atr", type=float)
+    p.add_argument("--target-atr", type=float)
+    p.add_argument("--rationale", required=True, help="why, citing trial ids")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    for action, help_text in (("check", "apply the validation gate to the latest version's stored trials"),
+                              ("test", "run the sealed test once (needs the user's authorisation)")):
+        p = st.add_parser(action, help=help_text)
+        p.add_argument("name")
+        if action == "test":
+            p.add_argument("--by", required=True, help="who ran it, e.g. claude or user")
+    for action in ("authorize-test", "approve", "reject", "retire"):
+        p = st.add_parser(action, help="user only")
+        p.add_argument("name")
+        p.add_argument("--by", required=True, choices=("agent", "user"))
+        p.add_argument("--note")
+    st.add_parser("list", help="every strategy version with its stage, history and paper record")
+    st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
+    p = st.add_parser("signals", help="signals of approved strategies on the latest day")
+    p.add_argument("--as-of")
 
     p = cmd.add_parser("fundamentals", help="protocol fundamentals (DefiLlama snapshots) for a token")
     p.add_argument("symbol", help="token symbol, e.g. AAVE")
@@ -342,6 +371,25 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "analogs" and args.action == "evaluate":
         _out(trials.run_analog_trial(conn, args.market, args.horizon, args.k, args.period, args.family,
                                      args.hypothesis, args.by))
+    elif c == "strategy" and args.action == "propose":
+        spec = {"market": args.market, "pattern": args.pattern, "conditions": [parse_when(w) for w in args.when],
+                "exit": {"hold_days": args.hold, "stop_atr": args.stop_atr, "target_atr": args.target_atr}}
+        _out(strategies.propose(conn, args.name, spec, args.rationale, args.by))
+    elif c == "strategy" and args.action == "check":
+        _out(strategies.check(conn, args.name))
+    elif c == "strategy" and args.action == "test":
+        _out(strategies.run_test(conn, args.name, args.by))
+    elif c == "strategy" and args.action == "authorize-test":
+        _out(strategies.authorize_test(conn, args.name, args.by, args.note))
+    elif c == "strategy" and args.action in ("approve", "reject", "retire"):
+        event = {"approve": "approved", "reject": "rejected", "retire": "retired"}[args.action]
+        _out(strategies.decide(conn, args.name, event, args.by, args.note))
+    elif c == "strategy" and args.action == "list":
+        _out(strategies.list_strategies(conn))
+    elif c == "strategy" and args.action == "paper":
+        _out(strategies.paper_step(conn))
+    elif c == "strategy" and args.action == "signals":
+        _out(strategies.approved_signals(conn, args.as_of))
     elif c == "fundamentals":
         rows = fundamentals.for_symbol(conn, args.symbol, args.as_of)
         _out({"symbol": args.symbol.upper(), "families": rows,
@@ -387,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
             print("database has pending migrations; run `python -m cryptoagent init-db` first", file=sys.stderr)
             return 2
         run(args, conn, settings)
-    except (UsageError, UnknownMarket, LedgerError, SpecError) as exc:
+    except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except research.ResearchError as exc:

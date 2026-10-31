@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from cryptoagent import predictions, quality, recommendations
+from cryptoagent import predictions, quality, recommendations, strategies
 from cryptoagent.quant import analogs, indicators, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
@@ -204,6 +204,24 @@ def _recommendations_section(conn) -> list[str]:
     return lines
 
 
+def _strategies_section(conn) -> list[str]:
+    rows = strategies.list_strategies(conn)
+    lines = [f"## Strategies ({strategies.POLICY})", ""]
+    if not rows:
+        return lines + ["No strategy has been proposed yet. Nothing here produces signals until it has passed "
+                        "validation, a user-authorised sealed test, a paper forward test and the user's approval."]
+    lines += ["| Strategy | Version | Stage | Paper trades resolved | Paper mean return |", "|---|---|---|---|---|"]
+    for r in rows:
+        paper = r.get("paper") or {}
+        lines.append(f"| {r['strategy']} | {r['version']} | {r['stage']} | {paper.get('resolved_trades', '')} | "
+                     f"{_fmt(paper.get('mean_return'), 'pct') if paper else ''} |")
+    signals = strategies.approved_signals(conn)
+    lines += ["", "Signals from approved strategies on the latest day: " + (
+        "; ".join(f"{s['market']} ({s['strategy']} v{s['version']}, hold {s['exit']['hold_days']}d)" for s in signals)
+        if signals else "none") + ". These are for the user to consider; nothing is traded automatically."]
+    return lines
+
+
 def render(conn: sqlite3.Connection) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     sections = [
@@ -211,7 +229,7 @@ def render(conn: sqlite3.Connection) -> str:
          "and the code in this repository; there is no AI interpretation here. Not financial advice."],
         _data_section(conn), _regime_section(conn), _analog_section(conn), _indicator_section(conn),
         _predictions_section(conn),
-        _scorecard_section(conn), _recommendations_section(conn), _scanner_section(conn),
+        _scorecard_section(conn), _recommendations_section(conn), _strategies_section(conn), _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "
          "Bitstamp public market data."],
     ]

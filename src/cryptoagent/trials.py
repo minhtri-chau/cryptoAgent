@@ -69,16 +69,7 @@ def run_trial(conn: sqlite3.Connection, spec: dict, period: str, family: str, hy
         df = load_daily(conn, norm["market"], end)  # nothing after the period is ever loaded
         if start is not None and (df.empty or df.index[-1] < pd.Timestamp(start)):
             raise SpecError(f"{norm['market']} has no data in the {period} period")
-        signal = patterns.evaluate(norm["pattern"], df)
-        cache: dict[str, pd.DataFrame] = {norm["market"]: df}
-
-        def load(market: str) -> pd.DataFrame:
-            if market not in cache:
-                cache[market] = load_daily(conn, market, end)
-            return cache[market]
-
-        for condition in norm["conditions"]:
-            signal &= patterns.condition_mask(condition, df.index, load, norm["market"])
+        signal = signal_function(conn, norm, end, {norm["market"]: df})(norm["market"], df)
         result = backtest.run(df, signal, exit, costs, pd.Timestamp(start) if start else None)
         first_day, last_day = df.index[0], df.index[-1]
     trade_list = result.pop("trade_list")
@@ -107,15 +98,13 @@ def run_trial(conn: sqlite3.Connection, spec: dict, period: str, family: str, hy
     return out
 
 
-def _run_pooled(conn: sqlite3.Connection, norm: dict, start: str | None, end: str | None, exit: Exit,
-                costs: Costs) -> tuple[dict, pd.Timestamp, pd.Timestamp]:
-    """Every Coinbase USD market (delisted ones included), signals only on universe-member days."""
-    version = norm["market"][len(POOL_PREFIX):]
-    raw = universe._candles(conn, "coinbase", "USD", end or "9999-12-31")
-    frames = {f"coinbase:{symbol}": df for symbol, df in raw.items()}
-    if not frames:
-        raise SpecError("no Coinbase USD candles stored")
-    cache = dict(frames)
+def signal_function(conn: sqlite3.Connection, norm: dict, end: str | None, frames: dict | None = None):
+    """The spec's signal for any market's frame: its pattern AND every condition, on the same day.
+
+    Shared by backtests, pooled runs and paper trading so a signal means the same thing everywhere.
+    Other markets referenced by conditions are loaded up to `end` and computed once.
+    """
+    cache = dict(frames or {})
     fields_cache: dict[str, pd.DataFrame] = {}
 
     def load(market: str) -> pd.DataFrame:
@@ -129,6 +118,19 @@ def _run_pooled(conn: sqlite3.Connection, norm: dict, start: str | None, end: st
             shared = "market" in condition and condition["market"] != market
             signal &= patterns.condition_mask(condition, df.index, load, market, fields_cache if shared else None)
         return signal
+
+    return signal_for
+
+
+def _run_pooled(conn: sqlite3.Connection, norm: dict, start: str | None, end: str | None, exit: Exit,
+                costs: Costs) -> tuple[dict, pd.Timestamp, pd.Timestamp]:
+    """Every Coinbase USD market (delisted ones included), signals only on universe-member days."""
+    version = norm["market"][len(POOL_PREFIX):]
+    raw = universe._candles(conn, "coinbase", "USD", end or "9999-12-31")
+    frames = {f"coinbase:{symbol}": df for symbol, df in raw.items()}
+    if not frames:
+        raise SpecError("no Coinbase USD candles stored")
+    signal_for = signal_function(conn, norm, end, frames)
 
     def member_for(market: str, df: pd.DataFrame) -> pd.Series:
         return universe.member_mask(df, market.split(":", 1)[1].split("/")[0], version)

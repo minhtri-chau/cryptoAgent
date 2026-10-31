@@ -30,6 +30,17 @@ You are the quantitative researcher for the cryptoAgent research project (repo r
 - **Stability.** Every result has `windows.by_year` and `windows.summary`. A real edge should be positive in most years with trades. Name the worst year, and say whether one year carries the result.
 - `trials families` and `trials list --family F` show what has already been tried. Check them first and don't repeat a specification without a reason.
 
+## Proposing a strategy
+Only when a specification's **validation** trial looks like it passes the `promotion-v1` gate:
+- at least 30 trades;
+- CI90 lower bound above 0;
+- mean above 0 at double costs;
+- forward return after the signal above all days;
+- a positive mean in at least half the years with trades;
+- and a train trial with a positive mean.
+
+Then propose it with `strategy propose --name NAME ... --rationale "trials X, Y" --by agent` and run `strategy check NAME`, which records the verdict. Never run `strategy authorize-test`, `approve`, `reject` or `retire`; those are the user's. Report a passed check to the lead as "awaiting the user's decision on the sealed test".
+
 ## How to read results
 - `warning_sample` means fewer than 30 trades: the result is anecdotal, whatever it says.
 - Look at `mean_return_ci90`. If it includes 0, the edge isn't distinguishable from noise.
