@@ -31,6 +31,7 @@ BASE_URL = "https://api.llama.fi"
 FEES_QUERY = "excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true"
 REQUEST_DELAY_S = 2.0
 NO_TOKEN = {"", "-"}
+MIN_TVL = 1_000_000  # below this, with no fees, a family that shares a token's symbol is noise (e.g. "Solana Farm")
 
 Fetch = Callable[[str], bytes]
 
@@ -68,7 +69,7 @@ def aggregate(protocols: list[dict], fees: list[dict], revenue: list[dict], symb
         if not fam["symbols"]:
             continue
         symbol = max(fam["symbols"], key=lambda s: fam["symbols"][s])  # the family's most-reported token
-        active = fam["tvl"] > 0 or any(fam.get(m) for m in ("fees_30d", "revenue_30d"))
+        active = fam["tvl"] >= MIN_TVL or any(fam.get(m) for m in ("fees_30d", "revenue_30d"))
         if symbol in symbols and active:  # a treasury holding the token (zero TVL, no fees) is not its fundamentals
             name = key.removeprefix("parent#") if key.startswith("parent#") else fam["names"][0]
             out[key] = {"name": name, "symbol": symbol, "category": fam["category"], "tvl": fam["tvl"],

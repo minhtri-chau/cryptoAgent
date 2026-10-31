@@ -85,6 +85,12 @@ v1.1 commands:
 
 v1.2: `plan SOURCE:SYMBOL [--entry] [--stop price|atr:K|swing_low] [--target price|atr:K|swing_high|r:N ...] [--horizon] [--as-of]` gives a long trade plan: levels, reward-to-risk before and after costs, historical first-touch odds (volatility-adjusted, all days and same trend), and expectancy. The `/plan` skill presents it. Base rates, not forecasts. Never advise size or tell the user to buy.
 
+Phase A of the investment upgrade:
+- `dossier COIN`: everything stored about a coin.
+- `token SYM ...`: live CoinGecko market cap, FDV and supply. **Never stored**, per CoinGecko's terms, and always attributed "Data provided by CoinGecko". The key lives in `.env` as `COINGECKO_DEMO_API_KEY`.
+- The `fundamental-analyst` subagent.
+- **Privacy:** never store the user's holdings, entry prices or personal situation in claims, the journal, predictions or recommendations. `privacy.py` refuses obvious phrasing as a backstop.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:

@@ -11,6 +11,8 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
+from cryptoagent import privacy
+
 TOPICS = (
     "market_structure", "bitcoin", "altcoins", "fundamentals", "tokenomics", "regulation", "macro",
     "exchanges", "strategy", "events", "data_sources",
@@ -57,6 +59,7 @@ def _check_citation(conn: sqlite3.Connection, c: Citation) -> list[str]:
 def add_claim(conn: sqlite3.Connection, *, topic: str, subject: str, statement: str, status: str,
               citations: list[Citation], confidence: float | None = None, as_of: str | None = None,
               review_after: str | None = None, created_by: str = "user", supersedes_id: int | None = None) -> int:
+    privacy.check(statement, *[c.excerpt for c in citations])
     errors = []
     if topic not in TOPICS:
         errors.append(f"topic must be one of {', '.join(TOPICS)}")

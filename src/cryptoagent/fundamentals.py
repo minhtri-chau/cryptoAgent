@@ -13,6 +13,7 @@ import sqlite3
 from datetime import date, timedelta
 
 METRICS = ("tvl", "mcap", "fees_24h", "fees_30d", "revenue_24h", "revenue_30d")
+MIN_TVL = 1_000_000
 ANNUALISE_30D = 365 / 30
 
 
@@ -34,8 +35,8 @@ def for_symbol(conn: sqlite3.Connection, symbol: str, as_of: str | None = None) 
             continue
         values = dict(conn.execute("SELECT metric, value FROM fundamental_obs WHERE entity_id = ? AND day = ?",
                                    (e["id"], day)).fetchall())
-        if not (values.get("tvl") or values.get("fees_30d") or values.get("revenue_30d")):
-            continue  # same rule as collection: an inactive holder of the token is not its fundamentals
+        if not ((values.get("tvl") or 0) >= MIN_TVL or values.get("fees_30d") or values.get("revenue_30d")):
+            continue  # same rule as collection: dust or an inactive holder of the token is not its fundamentals
         first = conn.execute("SELECT min(day), count(DISTINCT day) FROM fundamental_obs WHERE entity_id = ?",
                              (e["id"],)).fetchone()
         row = {"family": e["key"], "name": e["name"], "category": e["category"], "snapshot_day": day,

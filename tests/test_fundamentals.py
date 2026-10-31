@@ -20,6 +20,7 @@ PROTOCOLS = [
     {"name": "Curve DEX", "slug": "curve-dex", "symbol": "CRV", "tvl": 400.0, "mcap": None, "category": "Dexs"},
     {"name": "No Token", "slug": "nt", "symbol": "-", "tvl": 10.0},
     {"name": "Unlisted", "slug": "unl", "symbol": "ZZZ", "tvl": 10.0},
+    {"name": "Dust Farm", "slug": "dust", "symbol": "CRV", "tvl": 213.0},
 ]
 FEES = [{"slug": "aave-v2", "parentProtocol": "parent#aave", "total24h": 1.0, "total30d": 30.0},
         {"slug": "aave-v3", "parentProtocol": "parent#aave", "total24h": 9.0, "total30d": 270.0},

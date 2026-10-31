@@ -21,6 +21,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+from cryptoagent import privacy
 from cryptoagent.quant import analogs, regime
 from cryptoagent.quant.series import load_daily, market_id
 
@@ -47,6 +48,7 @@ def _latest(conn, mid: int) -> tuple[str, float]:
 
 def record(conn: sqlite3.Connection, market: str, horizon_days: int, prob_up: float, source: str, model: str,
            rationale: str | None = None, evidence: dict | None = None) -> int:
+    privacy.check(rationale, evidence)
     if not 0 <= prob_up <= 1:
         raise LedgerError("prob_up must be between 0 and 1")
     if horizon_days <= 0:

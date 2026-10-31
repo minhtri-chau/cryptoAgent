@@ -7,13 +7,14 @@ import json
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
-from cryptoagent import predictions, recommendations, research, strategies
+from cryptoagent import predictions, privacy, recommendations, research, strategies
 
 DEFAULT_LOOKBACK_DAYS = 7
 
 
 def add_entry(conn: sqlite3.Connection, kind: str, author: str, summary: str, report_path: str | None = None,
               evidence: dict | None = None) -> int:
+    privacy.check(summary, evidence)
     with conn:
         return conn.execute(
             "INSERT INTO journal (kind, author, summary, report_path, evidence) VALUES (?, ?, ?, ?, ?)",

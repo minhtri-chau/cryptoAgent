@@ -13,8 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (backup, calls, db, digest, fundamentals, predictions, quality, recommendations, report,
-                         research, strategies, tradeplan, trials)
+from cryptoagent import (backup, calls, coingecko, db, digest, dossier, fundamentals, predictions, privacy, quality,
+                         recommendations, report, research, strategies, tradeplan, trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -196,6 +196,13 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
+
+    p = cmd.add_parser("token", help="live market cap, FDV and supply from CoinGecko (not stored)")
+    p.add_argument("symbols", nargs="+", help="coin symbols, e.g. SOL AAVE")
+
+    p = cmd.add_parser("dossier", help="everything stored about one coin: market facts, fundamentals, claims, trials, "
+                                       "past calls and their outcomes, reports")
+    p.add_argument("symbol", help="coin symbol, e.g. AAVE")
 
     p = cmd.add_parser("plan", help="long trade plan: levels, reward-to-risk, historical first-touch odds, expectancy")
     p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
@@ -447,6 +454,10 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "token":
+        _out(coingecko.token_metrics(settings, args.symbols))
+    elif c == "dossier":
+        _out(dossier.build(conn, args.symbol))
     elif c == "plan":
         _out(tradeplan.plan(load_daily(conn, args.market, args.as_of), args.stop,
                             tuple(args.target) if args.target else None, args.horizon, args.entry))
@@ -520,7 +531,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run(args, conn, settings)
     except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError,
-            tradeplan.PlanError) as exc:
+            tradeplan.PlanError, coingecko.CoinGeckoError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except privacy.PrivacyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except research.ResearchError as exc:

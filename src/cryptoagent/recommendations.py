@@ -20,6 +20,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from cryptoagent import privacy
 from cryptoagent.predictions import GRACE_DAYS, SMALL_SAMPLE, LedgerError
 from cryptoagent.quant import backtest
 from cryptoagent.quant import indicators as ind
@@ -33,6 +34,7 @@ def record(conn: sqlite3.Connection, market: str, horizon_days: int, action: str
            risks: str, limitations: str, created_by: str, stop_atr: float | None = None,
            target_atr: float | None = None, evidence: dict | None = None, prediction_id: int | None = None,
            report_path: str | None = None) -> dict:
+    privacy.check(entry, invalidation, risks, limitations, evidence)
     if action not in ACTIONS:
         raise LedgerError(f"action must be one of {', '.join(ACTIONS)}")
     if action == "buy" and stop_atr is None:
