@@ -39,7 +39,7 @@ Checked 2026-10-30 on [fred.stlouisfed.org/legal](https://fred.stlouisfed.org/le
 | T10YIE, VIXCLS | Copyrighted, citation required | 0–1 day | unverified |
 | SP500, NASDAQCOM, BAMLH0A0HYM2 | **Copyrighted, pre-approval required** | — | — |
 
-**Decision pending (the user's call):** this project stores data by design, for reproducibility and point-in-time correctness, so no FRED collector is built until either FRED gives written consent or the user chooses another approach.
+**Decision (2026-10-30): skip macro for now.** Originally pending: this project stores data by design, for reproducibility and point-in-time correctness, so no FRED collector is built until either FRED gives written consent or the user chooses another approach.
 
 ## Observed behaviour (live runs, 2026-10-30)
 

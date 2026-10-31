@@ -30,6 +30,8 @@ Horizons:
 ## 4. Test
 Give **quant-researcher** the hypotheses, the market, a family name for each, and a budget of 8 runs. Train first, validation only for survivors, never the test period.
 
+If the coin has little history before 2022, also ask for the pooled version of the main hypothesis (`--market universe:universe-v2`). Report it as evidence about the setup in general, not about this coin.
+
 ## 5. Draft the thesis
 Base it only on the evidence gathered. Fill every field:
 - **asset and timeframe**, and the horizon;

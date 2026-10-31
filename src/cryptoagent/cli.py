@@ -93,7 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeframe", choices=["1h", "4h", "1d", "1w"], default="1d")
 
     p = cmd.add_parser("backtest", help="backtest one setup on a chronological period; always recorded as a trial")
-    p.add_argument("--market", required=True)
+    p.add_argument("--market", required=True,
+                   help="SOURCE:SYMBOL, or universe:universe-v2 to pool the setup over every member market")
     p.add_argument("--pattern", required=True, choices=list(patterns.PATTERNS))
     p.add_argument("--when", action="append", default=[], metavar="'[MARKET] FIELD OP VALUE'",
                    help="filter condition on the signal day; repeatable (all must hold)")

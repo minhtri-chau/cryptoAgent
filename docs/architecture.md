@@ -25,6 +25,8 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | **universe-v2 approved by the user** and made the default. It is v1 plus two exclusions: a fixed list of assets that track something else (fiat stablecoins USDT, DAI, PYUSD, EURC, GUSD, PAX, BUSD, USD1, USDS; commodity token PAXG; wrapped or staked WBTC, CBETH, LSETH, MSOL, JITOSOL), and a backstop that excludes anything with 30-day volatility under 10%. Reason: USDT and PAXG were in the 2026-10-30 scan, and past universes contained DAI, WBTC and CBETH. v1 stays callable (`scan --universe universe-v1`). |
 | 2026-10-30 | **analog-v1 did not beat the base rate.** In train (bitstamp:BTC/USD), Brier skill was −4.8% at 30 days (trial 19, 111 dates) and −5.3% at 90 days (trial 20, 36 dates); both CIs include 0. Validation was not run. Analogues stay as context in reports and as forward-tracked `analog_v1` predictions, but they aren't used for decisions. |
 | 2026-10-30 | **FRED not used yet.** Its terms forbid storing, caching or archiving FRED content without the Bank's prior written consent. Personal-use downloading is allowed, but this project stores data by design. Macro integration waits on the user's decision (see `docs/data-sources.md`). |
+| 2026-10-31 | **First pooled test (trial 21):** oversold 20-day breakdowns with BTC above its EMA200, across universe-v2, in train. 81 trades but only 23 distinct signal weeks; week-clustered CI90 (−6.0%, +12.6%); returns after the signal below drift; positive in 2 of 6 years. Not supported, so validation was not run. |
+| 2026-10-30 | **User decision: skip macro data for now.** No FRED collector or other macro source. To revisit: written consent from FRED, display-only fetching, or another source with storage-friendly terms. |
 
 ## Principles
 
@@ -121,8 +123,8 @@ cli           every reading command prints JSON; validation errors exit with sta
 | v0.2 | Indicator library with reference tests; rule-based BTC regime and cycle state; deterministic daily report; prediction ledger and scoring (starts the forward-test clock) |
 | v0.3 | First working trading researcher: weekly candles, explicit patterns, backtest engine (costs, chronological splits, sealed test period), trial registry including failures, subagents (bitcoin-analyst, technical-analyst, quant-researcher, risk-reviewer), `/investigate` skill and structured report |
 | v0.4 | Altcoin scanner (point-in-time universe, liquidity filters, relative strength vs BTC, delisting handling); recommendation ledger; 1h/4h data for BTC and ETH |
-| v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n); macro data (FRED, once its terms are verified) |
-| v0.6 | Walk-forward evaluation across many windows; hourly data for the wider universe if needed (Parquet/DuckDB) |
+| v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n). Macro data deferred by user decision. |
+| v0.6 | Stability by year in every backtest; pooled cross-market backtests over the point-in-time universe, with week-clustered CIs. Walk-forward optimisation and hourly data for the wider universe were deliberately not built (see the v0.6 design). |
 | v0.7 | Fundamentals (DefiLlama) and research knowledge base |
 | v0.8 | Strategy improvement loop: proposal → trials → holdout → paper forward test → user approval |
 | v0.9 | ML baselines, compared against the simple models on the same validation |
@@ -318,6 +320,41 @@ Out of scope for v0.2: backtests, strategies, recommendations, Claude skills and
 4. Macro series are collected only after their terms are verified, and they are stored with `available_on`. A test shows a value isn't visible before its availability date.
 5. `cryptoagent analogs`, `analogs evaluate` and `macro` print JSON. The report includes analogues for BTC and the macro context.
 6. The daily task records `analog_v1` predictions for BTC, and the agents use the new tools. Commit; tags wait for the terms review.
+
+## v0.6 design: robustness across time and across markets
+
+Every opportunity investigation so far ended with samples of 0–10 trades per coin, and with results that came from a single regime. v0.6 attacks both problems without opening the sealed test period:
+
+- **Stability across windows.** Every backtest result includes a per-calendar-year breakdown of the same fixed specification: trades, mean return, win rate, and forward returns after signals vs all days. It also includes a stability summary:
+  - windows with trades;
+  - the share of those windows with a positive mean;
+  - the worst and best window.
+
+  This is walk-forward in the evaluation sense: the specification never changes between windows. Walk-forward *optimisation* (re-fitting parameters on each window) is deliberately not built. We don't optimise parameters, and a parameter search would multiply the trial count.
+- **Pooled cross-market backtests.** Specifications can use the market `universe:universe-v2` (or `universe:universe-v1`). The same pattern and conditions then run on every Coinbase USD market, delisted ones included, and signals count only on days when that market was a member of the universe, judged point-in-time.
+  - Conditions without a market prefix refer to each market itself. Prefixed ones (e.g. BTC) are shared.
+  - One position at a time per market; trades in different markets can overlap.
+  - Results are trade-level: mean return, win rate, profit factor and MAE/MFE are pooled, along with forward returns after signals vs all member days.
+  - **Trades cluster in time:** one BTC move can trigger 40 coins at once. The CI90 therefore comes from a bootstrap that resamples whole signal *weeks*, and the result reports the number of distinct signal weeks next to the trade count.
+  - No portfolio equity curve: equal-weight portfolio construction is a strategy choice for later.
+  - Pooled specifications follow the same train/validation/test rules and the same sealed test period.
+- **Vectorised universe membership.** `member_mask` must agree with `membership()` on every checked day; a test checks this.
+- **Deferred:** hourly data for the wider universe. Nothing backtests intraday yet.
+
+## v0.6 acceptance criteria
+
+1. Every backtest (single-market and pooled) reports per-year windows and the stability summary, with a hand-checked test.
+2. `member_mask` matches `membership()` on sampled days for v1 and v2, including delisted markets, short history, illiquid markets and excluded assets.
+3. A pooled backtest:
+   - trades only on member days;
+   - holds one position per market;
+   - includes markets that were later delisted;
+   - never uses prices after the period;
+   - reports distinct signal weeks and a week-clustered CI90;
+   - can run the test period only after validation, once.
+4. `backtest --market universe:universe-v2` works from the CLI and is recorded as a trial.
+5. The quant researcher and `/investigate` prefer a pooled test when a single coin's history is too short. One hypothesis from the 2026-10-30 opportunities run is re-tested pooled.
+6. Commit; tags wait for the terms review.
 
 ## Main risks
 

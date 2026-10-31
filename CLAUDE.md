@@ -100,6 +100,9 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - Neighbours are at least one horizon apart, so the neighbour count is the effective n.
   - Walk-forward evaluation against the base rate is recorded in the trial registry. Train evaluation on BTC lost to the base rate (trials 19–20), so the method is context only.
   - The daily task still records `analog_v1` predictions for coinbase:BTC/USD to build a forward record.
+- **pooled** (`quant/pooled.py`, v0.6): `backtest --market universe:universe-v2` runs one specification on every Coinbase USD market, delisted ones included, on point-in-time member days only (`universe.member_mask`, tested to agree with `membership()`).
+  - Statistics are trade-level. The CI90 resamples whole signal weeks, and `distinct_signal_weeks` is reported, because a market-wide move triggers many coins at once.
+  - Every backtest result also has `windows` (by year) with a stability summary.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.

@@ -23,6 +23,11 @@ You are the quantitative researcher for the cryptoAgent research project (repo r
 - Available patterns are listed by `backtest --help`.
 - Condition fields are any column from `indicators` or `regime` (e.g. `sma50_change20`, `trend`, `rsi14`, `ema200_dev`), on any market.
 - `analogs evaluate --market M --horizon H --k K --period train|validation --family F --hypothesis "..." --by claude` tests whether `analog-v1` beats the base rate (walk-forward Brier on non-overlapping dates). It is recorded as a trial and follows the same period rules.
+- **Pooled tests.** `--market universe:universe-v2` runs the same specification on every Coinbase USD market, delisted ones included, on the days each was a universe member.
+  - Conditions without a market prefix apply to each coin itself.
+  - Use a pooled test when a single coin has too little history: anything listed after 2021 has little or no train period. A pooled result answers "does this setup work on liquid coins in general", not "on this coin". Say so.
+  - Trades cluster in time, so read `distinct_signal_weeks` next to `trades`. The CI90 resamples whole weeks.
+- **Stability.** Every result has `windows.by_year` and `windows.summary`. A real edge should be positive in most years with trades. Name the worst year, and say whether one year carries the result.
 - `trials families` and `trials list --family F` show what has already been tried. Check them first and don't repeat a specification without a reason.
 
 ## How to read results

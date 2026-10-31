@@ -102,14 +102,24 @@ def fields(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def condition_mask(condition: dict, index: pd.DatetimeIndex, load: Callable[[str], pd.DataFrame],
-                   own_market: str) -> pd.Series:
-    """True on days where the condition holds. Days the other market has no data are False."""
+                   own_market: str, fields_cache: dict | None = None) -> pd.Series:
+    """True on days where the condition holds. Days the other market has no data are False.
+
+    `fields_cache` (market -> fields table) avoids recomputing a shared market, e.g. BTC, for
+    every market of a pooled backtest.
+    """
     unknown = set(condition) - {"market", "field", "op", "value"}
     if unknown or not {"field", "op", "value"} <= set(condition):
         raise SpecError(f"condition needs field, op, value (and optional market): {condition}")
     if condition["op"] not in OPS:
         raise SpecError(f"unknown op {condition['op']!r}; use one of {', '.join(OPS)}")
-    table = fields(load(condition.get("market", own_market)))
+    market = condition.get("market", own_market)
+    if fields_cache is None:
+        table = fields(load(market))
+    else:
+        if market not in fields_cache:
+            fields_cache[market] = fields(load(market))
+        table = fields_cache[market]
     if condition["field"] not in table.columns:
         raise SpecError(f"unknown field {condition['field']!r}; known: {', '.join(table.columns)}")
     column = table[condition["field"]].reindex(index)

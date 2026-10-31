@@ -86,6 +86,26 @@ def membership(df: pd.DataFrame, as_of: pd.Timestamp, base: str | None = None,
     return True, "member", facts
 
 
+def member_mask(df: pd.DataFrame, base: str, version: str = VERSION) -> pd.Series:
+    """For every candle day of one market, whether it was a universe member that day.
+
+    The vectorised form of membership(), for backtests over the universe: on a candle day the
+    market is never stale, so only history, liquidity and (v2) the exclusions apply, each
+    computed from candles up to that day.
+    """
+    if version not in VERSIONS:
+        raise ValueError(f"unknown universe version {version!r}; use {', '.join(VERSIONS)}")
+    if version == "universe-v2" and base in _EXCLUDED:
+        return pd.Series(False, index=df.index)
+    history = pd.Series(np.arange(1, len(df) + 1), index=df.index) >= MIN_HISTORY_DAYS
+    dollar = (df["close"] * df["volume"]).rolling(LIQUIDITY_WINDOW).median()
+    mask = history & (dollar >= MIN_MEDIAN_DOLLAR_VOLUME)
+    if version == "universe-v2":
+        vol = ind.realized_vol(df["close"], LIQUIDITY_WINDOW)
+        mask &= ~(vol < MIN_VOL30)  # NaN volatility does not exclude, as in membership()
+    return mask.fillna(False).astype(bool)
+
+
 def _round(value, digits=6):
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return None

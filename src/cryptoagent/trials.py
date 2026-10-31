@@ -13,7 +13,7 @@ import sqlite3
 
 import pandas as pd
 
-from cryptoagent.quant import analogs, backtest, patterns
+from cryptoagent.quant import analogs, backtest, patterns, pooled, universe
 from cryptoagent.quant.backtest import Costs, Exit
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import load_daily
@@ -24,6 +24,7 @@ PERIODS = {
     "test": ("2024-07-01", None),
 }
 SPEC_KEYS = {"market", "pattern", "conditions", "exit"}
+POOL_PREFIX = "universe:"  # market "universe:universe-v2" = every member market, point-in-time
 EXIT_KEYS = {"hold_days", "stop_atr", "target_atr"}
 
 
@@ -33,6 +34,9 @@ def canonical(spec: dict) -> tuple[dict, str]:
         raise SpecError(f"spec needs market, pattern, exit (and optional conditions); got {spec}")
     if spec["pattern"] not in patterns.PATTERNS:
         raise SpecError(f"unknown pattern {spec['pattern']!r}; known: {', '.join(patterns.PATTERNS)}")
+    if spec["market"].startswith(POOL_PREFIX) and spec["market"][len(POOL_PREFIX):] not in universe.VERSIONS:
+        raise SpecError(f"unknown universe in {spec['market']!r}; use {POOL_PREFIX}" + f" or {POOL_PREFIX}".join(
+            universe.VERSIONS))
     ex = spec["exit"]
     if not isinstance(ex, dict) or set(ex) - EXIT_KEYS or "hold_days" not in ex:
         raise SpecError(f"exit needs hold_days (and optional stop_atr, target_atr); got {ex}")
@@ -58,24 +62,28 @@ def run_trial(conn: sqlite3.Connection, spec: dict, period: str, family: str, hy
         raise SpecError(f"unknown period {period!r}; use {', '.join(PERIODS)}")
     norm, spec_hash = canonical(spec)
     start, end = PERIODS[period]
-    df = load_daily(conn, norm["market"], end)  # nothing after the period is ever loaded
-    if start is not None and (df.empty or df.index[-1] < pd.Timestamp(start)):
-        raise SpecError(f"{norm['market']} has no data in the {period} period")
-    signal = patterns.evaluate(norm["pattern"], df)
-    cache: dict[str, pd.DataFrame] = {norm["market"]: df}
-
-    def load(market: str) -> pd.DataFrame:
-        if market not in cache:
-            cache[market] = load_daily(conn, market, end)
-        return cache[market]
-
-    for condition in norm["conditions"]:
-        signal &= patterns.condition_mask(condition, df.index, load, norm["market"])
     exit = Exit(**{k: v for k, v in norm["exit"].items() if v is not None})
-    result = backtest.run(df, signal, exit, costs, pd.Timestamp(start) if start else None)
+    if norm["market"].startswith(POOL_PREFIX):
+        result, first_day, last_day = _run_pooled(conn, norm, start, end, exit, costs)
+    else:
+        df = load_daily(conn, norm["market"], end)  # nothing after the period is ever loaded
+        if start is not None and (df.empty or df.index[-1] < pd.Timestamp(start)):
+            raise SpecError(f"{norm['market']} has no data in the {period} period")
+        signal = patterns.evaluate(norm["pattern"], df)
+        cache: dict[str, pd.DataFrame] = {norm["market"]: df}
+
+        def load(market: str) -> pd.DataFrame:
+            if market not in cache:
+                cache[market] = load_daily(conn, market, end)
+            return cache[market]
+
+        for condition in norm["conditions"]:
+            signal &= patterns.condition_mask(condition, df.index, load, norm["market"])
+        result = backtest.run(df, signal, exit, costs, pd.Timestamp(start) if start else None)
+        first_day, last_day = df.index[0], df.index[-1]
     trade_list = result.pop("trade_list")
-    data_through = df.index[-1].date().isoformat()
-    actual_start = max(df.index[0], pd.Timestamp(start)) if start else df.index[0]
+    data_through = last_day.date().isoformat()
+    actual_start = max(first_day, pd.Timestamp(start)) if start else first_day
     with conn:
         trial_id = conn.execute(
             "INSERT INTO trials (created_by, family, hypothesis, spec, spec_hash, market, period, period_start,"
@@ -97,6 +105,40 @@ def run_trial(conn: sqlite3.Connection, spec: dict, period: str, family: str, hy
     if include_trades:
         out["trade_list"] = trade_list
     return out
+
+
+def _run_pooled(conn: sqlite3.Connection, norm: dict, start: str | None, end: str | None, exit: Exit,
+                costs: Costs) -> tuple[dict, pd.Timestamp, pd.Timestamp]:
+    """Every Coinbase USD market (delisted ones included), signals only on universe-member days."""
+    version = norm["market"][len(POOL_PREFIX):]
+    raw = universe._candles(conn, "coinbase", "USD", end or "9999-12-31")
+    frames = {f"coinbase:{symbol}": df for symbol, df in raw.items()}
+    if not frames:
+        raise SpecError("no Coinbase USD candles stored")
+    cache = dict(frames)
+    fields_cache: dict[str, pd.DataFrame] = {}
+
+    def load(market: str) -> pd.DataFrame:
+        if market not in cache:
+            cache[market] = load_daily(conn, market, end)
+        return cache[market]
+
+    def signal_for(market: str, df: pd.DataFrame) -> pd.Series:
+        signal = patterns.evaluate(norm["pattern"], df)
+        for condition in norm["conditions"]:
+            shared = "market" in condition and condition["market"] != market
+            signal &= patterns.condition_mask(condition, df.index, load, market, fields_cache if shared else None)
+        return signal
+
+    def member_for(market: str, df: pd.DataFrame) -> pd.Series:
+        return universe.member_mask(df, market.split(":", 1)[1].split("/")[0], version)
+
+    result = pooled.run(frames, signal_for, member_for, exit, costs, pd.Timestamp(start) if start else None)
+    first = min(df.index[0] for df in frames.values())
+    last = max(df.index[-1] for df in frames.values())
+    if start is not None and last < pd.Timestamp(start):
+        raise SpecError(f"no data in the period starting {start}")
+    return result, first, last
 
 
 def run_analog_trial(conn: sqlite3.Connection, market: str, horizon: int, k: int, period: str, family: str,
