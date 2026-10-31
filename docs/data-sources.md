@@ -21,7 +21,7 @@ Checked 2026-10-30.
 | Kraken OHLCVT archive | Bulk OHLCVT zips, every pair from its first trade up to 2026-06-30, with quarterly updates | Full | — | **No licence stated** | Verified ([article](https://support.kraken.com/articles/360047124832)). Don't use until the terms are clear. |
 | data.binance.vision | Bulk klines | Deep | — | CC BY-NC-SA 4.0; personal backtesting allowed. Governing law defers to the Binance ToS (not read). | **Not used.** The user is in the US, and eligibility under the Binance ToS is unverified. |
 | CoinGecko Demo | Current market data | 1 year only | 100 calls/min, 10k/month; attribution required | — | Verified ([pricing](https://www.coingecko.com/en/api/pricing)). **Global market cap and dominance history are paid only**, so dominance history is **unavailable**. |
-| DefiLlama (`api.llama.fi`) | TVL, fees, revenue | Varies | Not stated | Not stated | Free and keyless verified ([docs](https://api-docs.defillama.com/llms-free.txt)). Planned for v0.7. |
+| DefiLlama (`api.llama.fi`) | TVL, market cap, fees, revenue | Daily snapshots from 2026-10-31; no backfill | No stated free limit; responses cached ~30 min | [Terms](https://defillama.com/terms) (24 June 2025): "personal, non-commercial" licence; storage not addressed; 8(1) "copy the materials"; liquidated damages up to USD 100,000 per violation; no open data licence | **Used since v0.7, stored privately as an accepted risk (user decision 2026-10-31).** 3 requests a day: `/protocols` and `/overview/fees` (fees and revenue). |
 
 ## FRED (macro data): not used, needs the Bank's written consent to store
 

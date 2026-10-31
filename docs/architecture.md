@@ -26,6 +26,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | **analog-v1 did not beat the base rate.** In train (bitstamp:BTC/USD), Brier skill was −4.8% at 30 days (trial 19, 111 dates) and −5.3% at 90 days (trial 20, 36 dates); both CIs include 0. Validation was not run. Analogues stay as context in reports and as forward-tracked `analog_v1` predictions, but they aren't used for decisions. |
 | 2026-10-30 | **FRED not used yet.** Its terms forbid storing, caching or archiving FRED content without the Bank's prior written consent. Personal-use downloading is allowed, but this project stores data by design. Macro integration waits on the user's decision (see `docs/data-sources.md`). |
 | 2026-10-31 | **First pooled test (trial 21):** oversold 20-day breakdowns with BTC above its EMA200, across universe-v2, in train. 81 trades but only 23 distinct signal weeks; week-clustered CI90 (−6.0%, +12.6%); returns after the signal below drift; positive in 2 of 6 years. Not supported, so validation was not run. |
+| 2026-10-31 | **User decision: store DefiLlama data privately, as an accepted risk.** DefiLlama's terms (24 June 2025) grant a "personal, non-commercial" licence to the official public API but don't address local storage. Clause 8(1) forbids "copy the materials"; the other bans are mirroring "on another server", republishing and commercial use; clause 14 sets liquidated damages of up to USD 100,000 per violation. Conditions: the database stays private and is never republished or shared, at most one polite collection per day, and every row keeps its source and collection time. |
 | 2026-10-30 | **User decision: skip macro data for now.** No FRED collector or other macro source. To revisit: written consent from FRED, display-only fetching, or another source with storage-friendly terms. |
 
 ## Principles
@@ -125,7 +126,7 @@ cli           every reading command prints JSON; validation errors exit with sta
 | v0.4 | Altcoin scanner (point-in-time universe, liquidity filters, relative strength vs BTC, delisting handling); recommendation ledger; 1h/4h data for BTC and ETH |
 | v0.5 | Analog engine (state vectors, purged forward distributions, MAE/MFE, effective n). Macro data deferred by user decision. |
 | v0.6 | Stability by year in every backtest; pooled cross-market backtests over the point-in-time universe, with week-clustered CIs. Walk-forward optimisation and hourly data for the wider universe were deliberately not built (see the v0.6 design). |
-| v0.7 | Fundamentals (DefiLlama) and research knowledge base |
+| v0.7 | Research knowledge base and DefiLlama fundamentals (daily point-in-time snapshots) |
 | v0.8 | Strategy improvement loop: proposal → trials → holdout → paper forward test → user approval |
 | v0.9 | ML baselines, compared against the simple models on the same validation |
 | v1.0 | Automated model interface (Claude API or another provider) |
@@ -355,6 +356,28 @@ Every opportunity investigation so far ended with samples of 0–10 trades per c
 4. `backtest --market universe:universe-v2` works from the CLI and is recorded as a trial.
 5. The quant researcher and `/investigate` prefer a pooled test when a single coin's history is too short. One hypothesis from the 2026-10-30 opportunities run is re-tested pooled.
 6. Commit; tags wait for the terms review.
+
+## v0.7 design: knowledge base and fundamentals
+
+- **Research knowledge base** (migration 005, `research.py`, `note add|list`, `/research` skill):
+  - append-only claims with a topic and a subject (`MARKET` or a coin);
+  - a fact needs a citation: a URL that was read, a trial, a prediction or another claim;
+  - a hypothesis needs a confidence;
+  - corrections supersede, and review dates flag claims to re-check.
+- **Fundamentals** (migration 006, `collectors/defillama.py`, `fundamentals.py`), stored privately under the user's accepted-risk decision of 2026-10-31:
+  - **Collection:** three requests a day. Protocols are summed per family (e.g. Aave V2 + V3), and only families whose token is a Coinbase USD market are kept.
+  - **Point-in-time:** daily snapshots only, with no back-filled history, so as-of queries can't see values before they were collected.
+  - **Ratios:** price to annualised fees and to annualised revenue, computed in Python.
+  - **Where it shows:** `fundamentals SYMBOL` and a `fundamentals` field on each `scan` row.
+  - **Not covered:** L1 chain fees (ETH, SOL) don't come through, because chains aren't protocols in `/protocols`.
+  - **Later:** fundamentals in backtest conditions, once enough snapshots have accumulated.
+
+## v0.7 acceptance criteria
+
+1. A fact without a citation is refused, citations must resolve, and claims are append-only with superseding.
+2. Fundamentals: families are summed correctly, one snapshot is stored per day, an as-of query before the first snapshot is empty, ratios are unavailable without a market cap, and rows are append-only.
+3. `note`, `fundamentals` and `scan` print JSON, and the daily task collects DefiLlama.
+4. `/research`, the altcoin scanner and `/investigate` use the knowledge base and fundamentals.
 
 ## Main risks
 

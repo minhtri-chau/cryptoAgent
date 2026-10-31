@@ -31,6 +31,7 @@ from cryptoagent.config import Settings
 
 BAR_MS = {"1d": store.DAY_MS, "1h": 3_600_000}
 RETRIES = 3
+MARKETS_BACKOFF_S = (10, 30, 60)  # a scheduled run right after the PC wakes can start before the network is up
 
 
 def candle_problem(row: list) -> str | None:
@@ -83,6 +84,18 @@ class ExchangeCollector:
         if self.symbols is not None:
             return [m for s, m in markets.items() if s in self.symbols]
         return [m for m in markets.values() if m.get("spot") and m.get("quote") == self.quote]
+
+    def _load_markets(self, exchange) -> dict:
+        import ccxt
+
+        for wait in (*MARKETS_BACKOFF_S, None):
+            try:
+                return exchange.load_markets()
+            except ccxt.NetworkError:
+                if wait is None:
+                    raise
+                self._sleep(wait)
+        raise AssertionError("unreachable")
 
     def _fetch(self, exchange, symbol: str, since: int | None) -> list[list]:
         import ccxt
@@ -174,7 +187,7 @@ class ExchangeCollector:
                    "invalid_candles": 0, "failed": {}}
         try:
             exchange = self._factory()
-            selected = self._selected(exchange.load_markets())
+            selected = self._selected(self._load_markets(exchange))
             todo = {}
             with conn:
                 for m in selected:

@@ -22,6 +22,11 @@ Horizons:
 - **bitcoin-analyst:** "Assess BTC's current state for an investigation of MARKET at the HORIZON horizon."
 - **technical-analyst:** "Analyse MARKET (daily and weekly) and propose up to three backtestable hypotheses suited to a HORIZON horizon."
 
+**Context (optional, in parallel):**
+- Run `fundamentals COIN` and `note list --subject COIN`.
+- If something material may be unknown, such as an imminent token unlock, an upgrade, a delisting or a regulatory action, run `/research COIN` first and cite the claim IDs in the report.
+- This context can argue for caution, or against a setup. It can't replace a tested setup as the reason to buy.
+
 ## 3. Choose hypotheses
 - Choose at most three from the technical analyst's proposals, plus your own ideas built from the BTC context. One BTC-conditioned hypothesis is usually worth including.
 - Write each one down before testing: the specification, and what result would count as support.

@@ -2,6 +2,7 @@
 
 from cryptoagent.collectors.base import Collector
 from cryptoagent.collectors.coinmetrics import CoinMetricsCollector
+from cryptoagent.collectors.defillama import DefiLlamaCollector
 from cryptoagent.collectors.exchange import ExchangeCollector
 
 COLLECTORS: dict[str, Collector] = {
@@ -15,5 +16,6 @@ COLLECTORS: dict[str, Collector] = {
         ExchangeCollector("bitstamp", "bitstamp", "Bitstamp BTC/USD daily candles (BTC history from 2011-08-18)",
                           page_limit=1000, symbols=["BTC/USD"]),
         CoinMetricsCollector(),
+        DefiLlamaCollector(),
     )
 }

@@ -10,6 +10,7 @@ echo ==== %date% %time% >> data\logs\collect.log
 .venv\Scripts\python.exe -m cryptoagent collect coinbase-1h >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent collect bitstamp >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent collect coinmetrics >> data\logs\collect.log 2>&1
+.venv\Scripts\python.exe -m cryptoagent collect defillama >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent quality --limit 0 > data\logs\quality-latest.json 2>> data\logs\collect.log
 .venv\Scripts\python.exe -m cryptoagent evaluate >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent predict baselines >> data\logs\collect.log 2>&1

@@ -184,3 +184,22 @@ def test_hourly_bars_skip_the_forming_hour_and_track_backfill_separately(conn, s
     timeframes = dict(conn.execute("SELECT timeframe, count(*) FROM candles GROUP BY 1").fetchall())
     assert timeframes == {"1d": 10, "1h": 37}
     assert {r[0] for r in conn.execute("SELECT timeframe FROM market_backfill")} == {"1d", "1h"}
+
+
+def test_network_not_yet_up_when_listing_markets_is_retried(conn, settings):
+    """2026-10-31: the catch-up run fired as the PC woke, DNS failed on the first call, and the whole
+    Coinbase daily collection was lost. Listing markets must be retried like candle fetches."""
+    fake = FakeExchange({"BTC/USD": days(990, 1000)})
+    real_load, failures, waits = fake.load_markets, [2], []
+
+    def flaky_load():
+        if failures[0]:
+            failures[0] -= 1
+            raise ccxt.NetworkError("getaddrinfo failed")
+        return real_load()
+
+    fake.load_markets = flaky_load
+    c = ExchangeCollector("coinbase", "coinbaseexchange", "test", 300, exchange_factory=lambda: fake,
+                          now_ms=lambda: NOW, sleep=waits.append)
+    assert c.collect(conn, settings)["status"] == "succeeded"
+    assert waits == [10, 30] and len(stored(conn)) == 10

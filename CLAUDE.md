@@ -58,7 +58,14 @@ v0.5 commands:
 - `analogs search SOURCE:SYMBOL [--as-of] [--horizon 30] [--k 15] [--brief]`
 - `analogs evaluate --market --horizon --k --period --family --hypothesis --by`: always recorded as a trial
 
+v0.7 commands:
+- `collect defillama`
+- `fundamentals SYMBOL [--as-of]`
+- `note add --topic --subject --status fact|hypothesis --text [--confidence] --cite url:|trial:|prediction:|claim: [--quote] [--review-after] [--supersedes] --by agent|user`
+- `note list [--topic] [--subject] [--status] [--due] [--all]`
+
 Research workflows:
+- `/research <topic or coin>`: web research saved as cited claims.
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
 - `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`, plus `altcoin-scanner` for `/opportunities`. Every investigation records a judgment prediction and a recommendation, `no_trade` included. Reports go to `reports/research/`.
 
@@ -103,6 +110,12 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
 - **pooled** (`quant/pooled.py`, v0.6): `backtest --market universe:universe-v2` runs one specification on every Coinbase USD market, delisted ones included, on point-in-time member days only (`universe.member_mask`, tested to agree with `membership()`).
   - Statistics are trade-level. The CI90 resamples whole signal weeks, and `distinct_signal_weeks` is reported, because a market-wide move triggers many coins at once.
   - Every backtest result also has `windows` (by year) with a stability summary.
+- **research** (`research.py`, migration 005): claims are append-only and corrections supersede.
+  - A fact needs a citation that resolves: a URL, trial, prediction or claim. A hypothesis needs a confidence.
+  - Prices and backtest numbers never come from the web; they come from the CLI.
+- **fundamentals** (`collectors/defillama.py`, `fundamentals.py`, migration 006): daily DefiLlama snapshots only, with no back-filled history, summed per protocol family and kept for Coinbase-listed tokens.
+  - Ratios (price to fees and to revenue) are computed in Python.
+  - The data is stored privately as the user's accepted risk. Never republish or share the database.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.

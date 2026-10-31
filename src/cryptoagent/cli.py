@@ -13,7 +13,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import db, predictions, quality, recommendations, report, trials
+from cryptoagent import db, fundamentals, predictions, quality, recommendations, report, research, trials
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -168,6 +168,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hypothesis", required=True)
     p.add_argument("--by", required=True)
 
+    p = cmd.add_parser("fundamentals", help="protocol fundamentals (DefiLlama snapshots) for a token")
+    p.add_argument("symbol", help="token symbol, e.g. AAVE")
+    p.add_argument("--as-of", help="YYYY-MM-DD: latest snapshot on or before this day")
+
+    note = cmd.add_parser("note", help="research knowledge base").add_subparsers(dest="action", required=True)
+    p = note.add_parser("add", help="record a cited fact or a labelled hypothesis")
+    p.add_argument("--topic", required=True, choices=research.TOPICS)
+    p.add_argument("--subject", required=True, help="MARKET, or a coin symbol such as ETH")
+    p.add_argument("--status", required=True, choices=("fact", "hypothesis"))
+    p.add_argument("--text", required=True)
+    p.add_argument("--confidence", type=float, help="hypotheses only, 0-1")
+    p.add_argument("--cite", action="append", default=[],
+                   help="url:https://..., trial:<id>, prediction:<id> or claim:<id>; repeatable")
+    p.add_argument("--quote", action="append", default=[],
+                   help="short excerpt for the citation in the same position (max 25 words)")
+    p.add_argument("--as-of", help="YYYY-MM-DD the statement is true as of (default today)")
+    p.add_argument("--review-after", help="YYYY-MM-DD to re-check (fees, policies, unlocks)")
+    p.add_argument("--by", dest="created_by", choices=("agent", "user"), default="user")
+    p.add_argument("--supersedes", type=int)
+    p = note.add_parser("list")
+    p.add_argument("--topic", choices=research.TOPICS)
+    p.add_argument("--subject")
+    p.add_argument("--status", choices=("fact", "hypothesis"))
+    p.add_argument("--all", action="store_true", help="include superseded claims")
+    p.add_argument("--due", action="store_true", help="only claims whose review date has passed")
+
     rec = cmd.add_parser("recommend", help="record a structured recommendation").add_subparsers(dest="action",
                                                                                                  required=True)
     p = rec.add_parser("add")
@@ -293,6 +319,9 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "scan":
         counts = {r[0]: r[1] for r in conn.execute("SELECT market, count(*) FROM trials GROUP BY market")}
         result = universe.scan(conn, args.as_of, sort=args.sort, trials_by_market=counts, version=args.universe)
+        fund = fundamentals.summary_by_symbol(conn, result["as_of"])
+        for m in result["markets"]:
+            m["fundamentals"] = fund.get(m["market"].split(":", 1)[1].split("/")[0])
         if args.pattern:
             if args.pattern not in patterns.PATTERNS:
                 raise UsageError(f"unknown pattern {args.pattern!r}")
@@ -313,6 +342,24 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "analogs" and args.action == "evaluate":
         _out(trials.run_analog_trial(conn, args.market, args.horizon, args.k, args.period, args.family,
                                      args.hypothesis, args.by))
+    elif c == "fundamentals":
+        rows = fundamentals.for_symbol(conn, args.symbol, args.as_of)
+        _out({"symbol": args.symbol.upper(), "families": rows,
+              "note": "daily snapshots only, from when tracking started; no back-filled history" if rows
+              else "unavailable: no DefiLlama family reports this token (or no snapshot yet)"})
+    elif c == "note" and args.action == "add":
+        if len(args.quote) > len(args.cite):
+            raise UsageError("more --quote values than --cite values")
+        citations = [research.parse_citation(t) for t in args.cite]
+        for citation, quote in zip(citations, args.quote):
+            citation.excerpt = quote or None
+        _out({"claim_id": research.add_claim(
+            conn, topic=args.topic, subject=args.subject, statement=args.text, status=args.status,
+            citations=citations, confidence=args.confidence, as_of=args.as_of, review_after=args.review_after,
+            created_by=args.created_by, supersedes_id=args.supersedes)})
+    elif c == "note" and args.action == "list":
+        _out(research.list_claims(conn, args.topic, args.subject, args.status, include_superseded=args.all,
+                                  due_for_review=args.due))
     elif c == "recommend":
         try:
             evidence = json.loads(args.evidence) if args.evidence else None
@@ -342,6 +389,9 @@ def main(argv: list[str] | None = None) -> int:
         run(args, conn, settings)
     except (UsageError, UnknownMarket, LedgerError, SpecError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except research.ResearchError as exc:
+        print("\n".join(f"error: {e}" for e in exc.errors), file=sys.stderr)
         return 2
     except sqlite3.IntegrityError as exc:
         print(f"error: {exc}", file=sys.stderr)
