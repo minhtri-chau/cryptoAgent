@@ -11,3 +11,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+
+# Pasted transcripts and articles (copyrighted; kept local, never committed)
+inbox/

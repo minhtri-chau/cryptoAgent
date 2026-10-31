@@ -474,6 +474,24 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.1: learning from outside commentators
+
+The user wants to learn from the YouTube channels they follow, covering timing, cycles, macro, fundamentals and chart patterns. The model can't be trained on them, so their ideas enter the project as evidence to test:
+
+- **`/learn-from` skill.** The user pastes a transcript or saves it in `inbox/`, which is gitignored and never committed. It's sorted into four kinds of content:
+  - testable rules, saved as low-confidence hypotheses that cite the URL and timestamp;
+  - dated calls, saved to the call ledger;
+  - context claims, checked with `/research`;
+  - opinions, summarised in one line.
+
+  Rules the project can express are backtested (at most 4 trials, family `learn:<creator>`, pooled for "altcoins" rules). The rest are listed with what they'd need. Transcripts are never stored and never scraped; quotes are capped at 25 words.
+- **Call ledger** (migration 009, `calls.py`, `call add|list|score`):
+  - **Anchor:** each call is pinned to the stored close on its publication day, enforced by a trigger.
+  - **Types:** `up` / `down` by a deadline, and `reach_above` / `reach_below` a target. Target calls resolve early once the target is touched.
+  - **Base rate:** each call gets a naive base rate from the market's history before publication, and the score is the hit rate minus the mean base rate.
+  - **Timing:** forward calls (recorded within 7 days) are kept apart from historical ones, which flatter the creator because the channels were chosen after their past calls were known.
+  - **Where it runs:** `evaluate` resolves calls daily, and the report gets an "Outside commentators" section.
+
 ## Main risks
 
 | Risk | Mitigation |

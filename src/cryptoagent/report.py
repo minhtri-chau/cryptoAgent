@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from cryptoagent import predictions, quality, recommendations, strategies
+from cryptoagent import calls, predictions, quality, recommendations, strategies
 from cryptoagent.quant import analogs, indicators, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
@@ -215,6 +215,22 @@ def _recommendations_section(conn) -> list[str]:
     return lines
 
 
+def _creators_section(conn) -> list[str]:
+    scores = calls.score(conn)
+    if not scores:
+        return []
+    lines = ["## Outside commentators", "",
+             "Dated calls from videos and articles, scored against what happened and against the naive base rate of the "
+             "same outcome. Historical calls flatter the creator (channels are chosen after their past calls); judge "
+             "mainly on forward calls.", "",
+             "| Creator | Calls | Timing | Resolved | Hit rate | Base rate | Edge |", "|---|---|---|---|---|---|---|"]
+    for s in scores:
+        lines.append(f"| {s['creator']} | {s['calls']} | {s['timing']} | {s['resolved']} | "
+                     f"{_fmt(s.get('hit_rate'), 'level')} | {_fmt(s.get('mean_base_rate'), 'level')} | "
+                     f"{_fmt(s.get('edge_vs_base_rate'), 'pct')} |")
+    return lines
+
+
 def _strategies_section(conn) -> list[str]:
     rows = strategies.list_strategies(conn)
     lines = [f"## Strategies ({strategies.POLICY})", ""]
@@ -241,11 +257,12 @@ def render(conn: sqlite3.Connection) -> str:
         _data_section(conn), _regime_section(conn), _analog_section(conn), _method_section(conn),
         _indicator_section(conn),
         _predictions_section(conn),
-        _scorecard_section(conn), _recommendations_section(conn), _strategies_section(conn), _scanner_section(conn),
+        _scorecard_section(conn), _recommendations_section(conn), _creators_section(conn), _strategies_section(conn),
+        _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "
          "Bitstamp public market data."],
     ]
-    return "\n\n".join("\n".join(s) for s in sections) + "\n"
+    return "\n\n".join("\n".join(s) for s in sections if s) + "\n"
 
 
 def write(conn: sqlite3.Connection, directory: Path) -> Path:

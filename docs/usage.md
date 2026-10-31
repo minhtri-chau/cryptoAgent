@@ -19,6 +19,16 @@
 
 The data is collected every night at 9 PM by the scheduled task "cryptoAgent daily collect". It needs no AI. If the PC was asleep, the task runs when it wakes, and `/daily` notices any gap.
 
+## Learning from the channels you follow
+
+1. Get a video's transcript yourself, for example from YouTube's "Show transcript" panel. Either paste it into the chat, or save it as a text file in `inbox/transcripts/`. That folder is never committed. The agent never downloads from YouTube itself.
+2. Type `/learn-from` and give the channel name, the video link and the **publish date**.
+3. The agent then:
+   - turns each concrete rule into a hypothesis and backtests the ones the project can express;
+   - records every dated call ("ETH to $4k by March") so it's scored when due;
+   - lists ideas it can't test yet (macro, on-chain) and what they'd need.
+4. Over time, `call score` and the report's "Outside commentators" section show whether each creator's calls beat what would have happened anyway. Judge mainly on **forward** calls, those recorded within a week of the video. Old calls flatter whoever you happen to follow today.
+
 ## Commands you'll use most
 
 | Want | Say or type |
@@ -27,6 +37,8 @@ The data is collected every night at 9 PM by the scheduled task "cryptoAgent dai
 | Best opportunities today | `/opportunities` (or `/opportunities long`) |
 | Deep dive on one coin | `/investigate SOL swing` |
 | Background research | `/research <topic or coin>` |
+| Learn from a video or article | `/learn-from` (paste the transcript) |
+| Commentators' scorecard | ask "how are the creators doing?", or run `call score` |
 | Read today's report | open `reports/YYYY-MM-DD.md` |
 | See every past call and how it scored | ask "show the track record", or run `predictions score` and `recommendations score` |
 

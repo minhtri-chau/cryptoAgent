@@ -13,8 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (db, digest, fundamentals, predictions, quality, recommendations, report, research,
-                         strategies, trials)
+from cryptoagent import (calls, db, digest, fundamentals, predictions, quality, recommendations, report,
+                         research, strategies, trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -197,6 +197,24 @@ def build_parser() -> argparse.ArgumentParser:
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
 
+    cl = cmd.add_parser("call", help="outside commentators' dated calls, scored against base rates").add_subparsers(
+        dest="action", required=True)
+    p = cl.add_parser("add", help="record one dated, checkable call from a video, post or article")
+    p.add_argument("--creator", required=True, help="channel or author name, used to group the score")
+    p.add_argument("--url", required=True, help="link to the source, ideally with a timestamp")
+    p.add_argument("--published", required=True, help="YYYY-MM-DD the call was made public")
+    p.add_argument("--market", required=True, help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
+    p.add_argument("--type", dest="call_type", required=True, choices=calls.CALL_TYPES)
+    p.add_argument("--target", type=float, help="price, for reach_above / reach_below")
+    p.add_argument("--deadline", required=True, help="YYYY-MM-DD by which the call must come true")
+    p.add_argument("--quote", help="the call in the creator's words, 25 words at most")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = cl.add_parser("list")
+    p.add_argument("--creator")
+    p.add_argument("--limit", type=int, default=50)
+    p = cl.add_parser("score", help="hit rate vs base rate per creator, forward and historical apart")
+    p.add_argument("--creator")
+
     p = cmd.add_parser("digest", help="what changed since the last briefing (resolutions, data, strategies, claims)")
     p.add_argument("--since", help="YYYY-MM-DD (default: the last journal briefing, else 7 days ago)")
     p.add_argument("--ahead", type=int, default=7, help="list calls resolving within this many days")
@@ -369,7 +387,8 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "predictions" and args.action == "score":
         _out(predictions.scorecard(conn, args.market))
     elif c == "evaluate":
-        _out({"predictions": predictions.evaluate(conn), "recommendations": recommendations.evaluate(conn)})
+        _out({"predictions": predictions.evaluate(conn), "recommendations": recommendations.evaluate(conn),
+              "external_calls": calls.resolve(conn)})
     elif c == "scan":
         counts = {r[0]: r[1] for r in conn.execute("SELECT market, count(*) FROM trials GROUP BY market")}
         result = universe.scan(conn, args.as_of, sort=args.sort, trials_by_market=counts, version=args.universe)
@@ -415,6 +434,14 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "call" and args.action == "add":
+        _out(calls.record(conn, creator=args.creator, source_url=args.url, published_on=args.published,
+                          market=args.market, call_type=args.call_type, deadline=args.deadline, recorded_by=args.by,
+                          target=args.target, quote=args.quote))
+    elif c == "call" and args.action == "list":
+        _out(calls.list_calls(conn, args.creator, args.limit))
+    elif c == "call" and args.action == "score":
+        _out(calls.score(conn, args.creator))
     elif c == "digest":
         _out(digest.digest(conn, args.since, args.ahead))
     elif c == "journal" and args.action == "add":
