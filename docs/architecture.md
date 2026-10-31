@@ -478,6 +478,20 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.5: `/advise` (upgrade phase C)
+
+`/advise` gives a conclusion-first research assessment of an asset **at today's price**. Hold, average-down and take-profit questions are judged exactly like a fresh buy, so the entry price is context only.
+
+1. Gather: dossier, BTC backdrop, technical-analyst with `plan`, fundamental-analyst with `token`, `valuation` (reverse plus cases) and `history`, then trials and strategies.
+2. Reason with an evidence ledger (validated, base rates, judgment): bull and bear cases, disagreements between technicals and fundamentals, "good project, bad price?", disconfirmation, and concrete triggers.
+3. Challenge with risk-reviewer, which now has checks 10–17 for investment theses: anchoring, evidence levels, value capture, dilution, scenario realism, horizon fit, missing disconfirmation and privacy.
+4. Answer in a fixed order.
+5. Record the conclusion anonymously as a prediction and a recommendation, and write a report.
+
+Demo on 2026-10-31, "Is AAVE worth buying today?": the answer was **wait** (prediction #57, recommendation #5).
+- The risk review caught scenarios that contradicted the conclusion (a −66% "base" alongside "wait"), and two untraceable numbers. Both were fixed before answering.
+- A privacy check found no personal phrasing anywhere in stored text, and the guard refused deliberate attempts.
+
 ## v1.4: scenario valuation (upgrade phase B)
 
 `valuation.py` and `valuation SYM`: deterministic prices from explicitly stated assumptions. Claude proposes and cites the assumptions; Python computes.

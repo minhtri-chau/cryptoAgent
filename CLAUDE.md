@@ -99,6 +99,10 @@ Phase B: `valuation SYM --method multiple|reverse|relative|history` turns stated
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
+- `/advise <question>`: a conclusion-first investment research assessment (buy, hold, sell, average down, take profits, cash or coin).
+  - Combines the BTC backdrop, technical-analyst with `plan`, fundamental-analyst with `token` and `valuation`, history, and a risk review.
+  - It separates validated evidence, base rates and judgment, and never sizes positions.
+  - Each conclusion is recorded anonymously (prediction plus recommendation); personal positions are never stored.
 - `/learn-from <transcript or inbox/ file>`: a creator's rules become hypotheses and tests, and their calls are scored. Never store or scrape transcripts.
 - `/daily [unattended]`: the daily session. See `docs/usage.md`.
 - `/research <topic or coin>`: web research saved as cited claims.

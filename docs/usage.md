@@ -35,6 +35,7 @@ The data is collected every night at 9 PM by the scheduled task "cryptoAgent dai
 |---|---|
 | Daily update | `/daily` |
 | Best opportunities today | `/opportunities` (or `/opportunities long`) |
+| Should I buy / hold / sell / average down? | `/advise <your question>`, e.g. "Is AAVE worth buying today?" or "I bought SOL at $180, should I average down?" |
 | Risk to reward and entry/exit plan | `/plan BTC` (or "what's the risk to reward of buying BTC now?") |
 | Deep dive on one coin | `/investigate SOL swing` |
 | Background research | `/research <topic or coin>` |
