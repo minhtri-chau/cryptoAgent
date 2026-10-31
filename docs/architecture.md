@@ -26,6 +26,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-30 | **analog-v1 did not beat the base rate.** In train (bitstamp:BTC/USD), Brier skill was −4.8% at 30 days (trial 19, 111 dates) and −5.3% at 90 days (trial 20, 36 dates); both CIs include 0. Validation was not run. Analogues stay as context in reports and as forward-tracked `analog_v1` predictions, but they aren't used for decisions. |
 | 2026-10-30 | **FRED not used yet.** Its terms forbid storing, caching or archiving FRED content without the Bank's prior written consent. Personal-use downloading is allowed, but this project stores data by design. Macro integration waits on the user's decision (see `docs/data-sources.md`). |
 | 2026-10-31 | **First pooled test (trial 21):** oversold 20-day breakdowns with BTC above its EMA200, across universe-v2, in train. 81 trades but only 23 distinct signal weeks; week-clustered CI90 (−6.0%, +12.6%); returns after the signal below drift; positive in 2 of 6 years. Not supported, so validation was not run. |
+| 2026-10-31 | **ML baselines lost to the base rate.** On bitstamp:BTC/USD train, Brier skill was −11.0% for ml-logit-v1 at 30 days (trial 22) and −6.3% at 90 days (trial 23); ml-gbm-v1 scored −18.5% at 30 days (trial 24, CI90 entirely below 0: significantly worse) and −35.3% at 90 days (trial 25). The more flexible the model, the worse it did. Validation was not run, and ML output is not used. The same evaluation finds a planted signal in tests, so this is a finding about the data, not a blind spot in the method. |
 | 2026-10-31 | **promotion-v1 thresholds approved by the user** as written in the v0.8 design (validation: 30+ trades, CI90 low > 0, positive at double costs, beats drift, positive in at least half the years, train mean > 0; sealed test: 10+ trades, positive, positive at double costs; paper: 90+ days, 10+ resolved trades, positive after costs). |
 | 2026-10-31 | **User decision: store DefiLlama data privately, as an accepted risk.** DefiLlama's terms (24 June 2025) grant a "personal, non-commercial" licence to the official public API but don't address local storage. Clause 8(1) forbids "copy the materials"; the other bans are mirroring "on another server", republishing and commercial use; clause 14 sets liquidated damages of up to USD 100,000 per violation. Conditions: the database stays private and is never republished or shared, at most one polite collection per day, and every row keeps its source and collection time. |
 | 2026-10-30 | **User decision: skip macro data for now.** No FRED collector or other macro source. To revisit: written consent from FRED, display-only fetching, or another source with storage-friendly terms. |
@@ -129,7 +130,7 @@ cli           every reading command prints JSON; validation errors exit with sta
 | v0.6 | Stability by year in every backtest; pooled cross-market backtests over the point-in-time universe, with week-clustered CIs. Walk-forward optimisation and hourly data for the wider universe were deliberately not built (see the v0.6 design). |
 | v0.7 | Research knowledge base and DefiLlama fundamentals (daily point-in-time snapshots) |
 | v0.8 | Strategy improvement loop: proposal → validation gate → user-authorised sealed test → paper forward test → user approval |
-| v0.9 | ML baselines, compared against the simple models on the same validation |
+| v0.9 | ML baselines (logistic, gradient boosting), walk-forward evaluated against the base rate as trials |
 | v1.0 | Automated model interface (Claude API or another provider) |
 
 At the end of each phase, commit and add an annotated tag (`v0.N`).
@@ -419,6 +420,33 @@ approved ──(user)──▶ retired
 Notes:
 - The test step needs the validation trial of the same spec hash. It's the same rule the database enforces for any test-period run.
 - A delisted market's open paper trade stays unresolved until candles exist past its horizon. That never happens, so it stays open; the review gate counts only resolved trades.
+
+## v0.9 design: machine learning, held to the same standard
+
+The brief: don't introduce complex models before the simple baselines are reliable, and judge ML against simpler statistical methods. So v0.9 adds two models and one question: **do they beat the base rate out of sample?**
+
+- **Models** (`quant/ml.py`). Both are deterministic, with a fixed random state.
+  - `ml-logit-v1`: standardised logistic regression. It's simple and usually well calibrated.
+  - `ml-gbm-v1`: a shallow histogram gradient-boosting classifier (depth 3, 100 iterations, learning rate 0.05). It's more flexible, and more likely to overfit.
+- **Data:**
+  - Features: the analog-v1 state (returns, EMA200 deviation, SMA200 slope, log volatility, RSI, drawdown), plus the regime-v1 trend label one-hot encoded. All are causal.
+  - Target: whether the close `h` bars later is above today's.
+- **Walk-forward evaluation**, the same protocol as analogues:
+  - Dates are `h` bars apart inside a period.
+  - At each date the model is fitted only on rows whose whole forward window ended by that date (the purge).
+  - It needs at least 500 training rows, with both outcomes present.
+  - P(up) is compared with the base rate of the same training rows, by Brier score, with a CI90 on the per-date Brier difference.
+- **Every evaluation is a trial** (spec `{"method": "ml-logit-v1" | "ml-gbm-v1", market, horizon_days}`). Train first, validation only if train shows skill, and the sealed test only for promotion.
+- **No ML output feeds a decision** until a model shows positive Brier skill with a CI90 above 0 on validation. Even then it would enter as a proposed model needing the user's approval, like a strategy.
+- **Dependency:** scikit-learn.
+
+## v0.9 acceptance criteria
+
+1. No training row's forward window reaches past the evaluation date (a test).
+2. On synthetic data with a planted, learnable relationship, the models beat the base rate. On a pure random walk they don't show significant skill. This shows the evaluation can tell signal from noise.
+3. `ml evaluate` records a trial; the sealed-test rules apply.
+4. BTC is evaluated in train at 30 and 90 days for both models, and the result is recorded in the decision log whatever it is.
+5. The report lists every method evaluation (analogues and ML) against the base rate.
 
 ## Main risks
 

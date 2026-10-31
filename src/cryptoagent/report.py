@@ -3,6 +3,7 @@ baseline predictions and the scorecard. Written to reports/YYYY-MM-DD.md."""
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -112,16 +113,26 @@ def _analog_section(conn) -> list[str]:
     if closest:
         lines += ["", "Closest 30-day analogues: " + ", ".join(
             f"{n['day']} ({_fmt(n['forward_return'], 'pct')})" for n in closest) + "."]
-    evaluated = conn.execute(
-        "SELECT id, period, json_extract(spec, '$.horizon_days'), json_extract(results, '$.brier_skill_vs_base'),"
-        " trades FROM trials WHERE json_extract(spec, '$.method') = ? AND market = ? ORDER BY id",
-        (analogs.VERSION, REGIME_MARKET)).fetchall()
-    if evaluated:
-        lines += ["", "Recorded evaluations against the base rate (Brier skill; above 0 means analogues were better): "
-                  + "; ".join(f"trial {i} {p} {h}d: {_fmt(s, 'pct')} over {n} dates" for i, p, h, s, n in evaluated)
-                  + "."]
-    else:
-        lines += ["", "No recorded evaluation of this method yet: treat it as unvalidated."]
+    return lines
+
+
+def _method_section(conn) -> list[str]:
+    rows = conn.execute(
+        "SELECT id, json_extract(spec, '$.method'), market, period, json_extract(spec, '$.horizon_days'),"
+        " json_extract(results, '$.brier_skill_vs_base'), json_extract(results, '$.brier_diff_ci90'), trades"
+        " FROM trials WHERE json_extract(spec, '$.method') IS NOT NULL ORDER BY id").fetchall()
+    lines = ["## Forecasting methods vs the base rate", ""]
+    if not rows:
+        return lines + ["No method has been evaluated yet: analogues and ML models are unvalidated."]
+    lines += ["Walk-forward Brier skill against the plain base rate on non-overlapping dates. A method is used for "
+              "decisions only with positive skill whose CI90 is above 0 on validation; none has that yet unless "
+              "listed so below.", "",
+              "| Trial | Method | Market | Period | Horizon | Brier skill | CI90 of Brier gain | Dates |",
+              "|---|---|---|---|---|---|---|---|"]
+    for i, method, market, period, h, skill, ci, n in rows:
+        ci = json.loads(ci) if ci else None
+        ci_text = f"{ci[0]:+.4f} to {ci[1]:+.4f}" if ci else "unavailable"
+        lines.append(f"| {i} | {method} | {market} | {period} | {h}d | {_fmt(skill, 'pct')} | {ci_text} | {n} |")
     return lines
 
 
@@ -227,7 +238,8 @@ def render(conn: sqlite3.Connection) -> str:
     sections = [
         [f"# Daily market report", "", f"Generated {now}. Deterministic output: every number comes from stored data "
          "and the code in this repository; there is no AI interpretation here. Not financial advice."],
-        _data_section(conn), _regime_section(conn), _analog_section(conn), _indicator_section(conn),
+        _data_section(conn), _regime_section(conn), _analog_section(conn), _method_section(conn),
+        _indicator_section(conn),
         _predictions_section(conn),
         _scorecard_section(conn), _recommendations_section(conn), _strategies_section(conn), _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "

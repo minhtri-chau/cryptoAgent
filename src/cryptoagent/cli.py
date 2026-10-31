@@ -18,7 +18,7 @@ from cryptoagent import (db, fundamentals, predictions, quality, recommendations
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
-from cryptoagent.quant import analogs, indicators, patterns, regime, universe
+from cryptoagent.quant import analogs, indicators, ml, patterns, regime, universe
 from cryptoagent.quant.backtest import Costs
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import UnknownMarket, load, load_daily
@@ -223,6 +223,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="include superseded claims")
     p.add_argument("--due", action="store_true", help="only claims whose review date has passed")
 
+    mlp = cmd.add_parser("ml", help="machine-learning baselines, judged against the base rate").add_subparsers(
+        dest="action", required=True)
+    p = mlp.add_parser("evaluate", help="walk-forward Brier of a model vs the base rate; always recorded as a trial")
+    p.add_argument("--market", required=True)
+    p.add_argument("--model", required=True, choices=list(ml.MODELS))
+    p.add_argument("--horizon", type=int, default=30)
+    p.add_argument("--period", required=True, choices=list(trials.PERIODS))
+    p.add_argument("--family", required=True)
+    p.add_argument("--hypothesis", required=True)
+    p.add_argument("--by", required=True)
+
     rec = cmd.add_parser("recommend", help="record a structured recommendation").add_subparsers(dest="action",
                                                                                                  required=True)
     p = rec.add_parser("add")
@@ -408,6 +419,9 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "note" and args.action == "list":
         _out(research.list_claims(conn, args.topic, args.subject, args.status, include_superseded=args.all,
                                   due_for_review=args.due))
+    elif c == "ml" and args.action == "evaluate":
+        _out(trials.run_ml_trial(conn, args.market, args.model, args.horizon, args.period, args.family,
+                                 args.hypothesis, args.by))
     elif c == "recommend":
         try:
             evidence = json.loads(args.evidence) if args.evidence else None

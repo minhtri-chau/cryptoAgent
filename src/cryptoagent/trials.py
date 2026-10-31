@@ -13,7 +13,7 @@ import sqlite3
 
 import pandas as pd
 
-from cryptoagent.quant import analogs, backtest, patterns, pooled, universe
+from cryptoagent.quant import analogs, backtest, ml, patterns, pooled, universe
 from cryptoagent.quant.backtest import Costs, Exit
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import load_daily
@@ -143,25 +143,22 @@ def _run_pooled(conn: sqlite3.Connection, norm: dict, start: str | None, end: st
     return result, first, last
 
 
-def run_analog_trial(conn: sqlite3.Connection, market: str, horizon: int, k: int, period: str, family: str,
-                     hypothesis: str, created_by: str) -> dict:
-    """Walk-forward evaluation of analog-v1 against the base rate on one period, recorded as a trial.
+def _record_method_trial(conn: sqlite3.Connection, norm: dict, period: str, family: str, hypothesis: str,
+                         created_by: str, evaluate) -> dict:
+    """Run a forecasting method's walk-forward evaluation on one period and record it as a trial.
 
-    The spec is {"method": "analog-v1", market, horizon_days, k}; the test period is sealed for it
-    exactly as for backtests. Evaluation dates are `horizon` days apart and every outcome falls
-    inside the period, because nothing after the period end is loaded.
+    `evaluate(df, start)` sees only candles up to the period end, so every outcome falls inside the
+    period; the spec hash makes the sealed-test rule apply exactly as for backtests.
     """
     if period not in PERIODS:
         raise SpecError(f"unknown period {period!r}; use {', '.join(PERIODS)}")
-    if horizon < 1 or k < 1:
-        raise SpecError("horizon and k must be positive")
-    norm = {"method": analogs.VERSION, "market": market, "horizon_days": int(horizon), "k": int(k)}
     spec_hash = hashlib.sha256(json.dumps(norm, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
     start, end = PERIODS[period]
-    df = load_daily(conn, market, end)
+    df = load_daily(conn, norm["market"], end)
     if df.empty or (start is not None and df.index[-1] < pd.Timestamp(start)):
-        raise SpecError(f"{market} has no data in the {period} period")
-    result = analogs.evaluate(df, horizon, k, pd.Timestamp(start) if start else None)
+        raise SpecError(f"{norm['market']} has no data in the {period} period")
+    result = evaluate(df, pd.Timestamp(start) if start else None)
+    result.pop("_purge_check", None)
     dates = result.pop("dates", [])
     data_through = df.index[-1].date().isoformat()
     with conn:
@@ -169,7 +166,7 @@ def run_analog_trial(conn: sqlite3.Connection, market: str, horizon: int, k: int
             "INSERT INTO trials (created_by, family, hypothesis, spec, spec_hash, market, period, period_start,"
             " period_end, data_through, costs, trades, mean_return, results) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
             " '{}', ?, NULL, ?)",
-            (created_by, family, hypothesis, json.dumps(norm, sort_keys=True), spec_hash, market, period,
+            (created_by, family, hypothesis, json.dumps(norm, sort_keys=True), spec_hash, norm["market"], period,
              result.get("first_day"), data_through, data_through, result["evaluations"],
              json.dumps(result | {"dates": dates}, sort_keys=True, default=str)),
         ).lastrowid
@@ -179,6 +176,28 @@ def run_analog_trial(conn: sqlite3.Connection, market: str, horizon: int, k: int
     if result["evaluations"] < 30:
         out["warning_sample"] = f"only {result['evaluations']} non-overlapping evaluations: too few to conclude"
     return out
+
+
+def run_analog_trial(conn: sqlite3.Connection, market: str, horizon: int, k: int, period: str, family: str,
+                     hypothesis: str, created_by: str) -> dict:
+    """Walk-forward evaluation of analog-v1 against the base rate, recorded as a trial."""
+    if horizon < 1 or k < 1:
+        raise SpecError("horizon and k must be positive")
+    norm = {"method": analogs.VERSION, "market": market, "horizon_days": int(horizon), "k": int(k)}
+    return _record_method_trial(conn, norm, period, family, hypothesis, created_by,
+                                lambda df, start: analogs.evaluate(df, horizon, k, start))
+
+
+def run_ml_trial(conn: sqlite3.Connection, market: str, kind: str, horizon: int, period: str, family: str,
+                 hypothesis: str, created_by: str) -> dict:
+    """Walk-forward evaluation of an ML model against the base rate, recorded as a trial."""
+    if kind not in ml.MODELS:
+        raise SpecError(f"unknown model {kind!r}; use {', '.join(ml.MODELS)}")
+    if horizon < 1:
+        raise SpecError("horizon must be positive")
+    norm = {"method": ml.MODELS[kind], "market": market, "horizon_days": int(horizon)}
+    return _record_method_trial(conn, norm, period, family, hypothesis, created_by,
+                                lambda df, start: ml.evaluate(df, kind, horizon, start))
 
 
 def list_trials(conn: sqlite3.Connection, family: str | None = None, limit: int = 50) -> list[dict]:

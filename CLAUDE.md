@@ -71,6 +71,9 @@ v0.8 commands (strategy lifecycle, `promotion-v1`):
 - `strategy list`, `strategy paper` (daily), `strategy signals`
 - **User only:** `strategy authorize-test|approve|reject|retire NAME --by user`
 
+v0.9 commands:
+- `ml evaluate --market --model logit|gbm --horizon --period --family --hypothesis --by`: always recorded as a trial
+
 Research workflows:
 - `/research <topic or coin>`: web research saved as cited claims.
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
@@ -128,6 +131,10 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - Stages are append-only events. A trigger allows only listed transitions and reserves authorise, approve, reject and retire for `decided_by = 'user'`.
   - Paper trades are bound to the latest candle, one is open per market, and they are resolved by replay with costs.
   - Approved strategies' signals appear in the daily report for the user to consider; nothing is traded.
+- **ml** (`quant/ml.py`): `ml-logit-v1` and `ml-gbm-v1` on the analog-v1 state plus the trend label.
+  - Walk-forward with a purge: training rows' outcomes must be known by the forecast date. Scored against the base rate by Brier and recorded as trials.
+  - Tests show the evaluation finds a planted signal and finds none in noise.
+  - No ML output feeds a decision unless validation shows a Brier-gain CI90 above 0, and then only as a user-approved proposal.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.
