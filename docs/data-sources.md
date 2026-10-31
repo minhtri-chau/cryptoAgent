@@ -70,5 +70,5 @@ Checked 2026-10-30 on [fred.stlouisfed.org/legal](https://fred.stlouisfed.org/le
 
 ## Open items for the user
 
-1. Read the [Coinbase Developer Platform terms](https://www.coinbase.com/legal/developer-platform/terms-of-service) and [Bitstamp terms](https://www.bitstamp.net/terms-of-use/), and confirm that using public market data for personal research is fine.
+1. ~~Read the Coinbase and Bitstamp terms~~: **done 2026-10-31.** The user reviewed them and confirmed that personal research use of public market data is fine.
 2. Confirm your current Coinbase Advanced maker/taker fee tier.
