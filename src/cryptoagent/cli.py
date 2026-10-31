@@ -14,7 +14,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from cryptoagent import (backup, calls, coingecko, db, digest, dossier, fundamentals, predictions, privacy, quality,
-                         recommendations, report, research, strategies, tradeplan, trials)
+                         recommendations, report, research, strategies, tradeplan, trials, valuation)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -197,6 +197,23 @@ def build_parser() -> argparse.ArgumentParser:
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
 
+    p = cmd.add_parser("valuation", help="scenario valuation from stated assumptions (conditional, not a forecast)")
+    p.add_argument("symbol", help="coin symbol, e.g. AAVE")
+    p.add_argument("--method", required=True, choices=("multiple", "reverse", "relative", "history"))
+    p.add_argument("--case", default="", help="label, e.g. bear, base, bull")
+    p.add_argument("--metric", choices=("fees", "revenue"), default="revenue",
+                   help="annual metric for multiple/reverse (default revenue: what can reach holders)")
+    p.add_argument("--metric-value", type=float, help="annual metric in USD (default: DefiLlama 30d x 365/30)")
+    p.add_argument("--multiple", type=float, help="market cap / annual metric assumed at the horizon")
+    p.add_argument("--growth", type=float, help="assumed yearly metric growth, e.g. 0.3 for +30%%")
+    p.add_argument("--years", type=float, help="horizon in years")
+    p.add_argument("--dilution", type=float, help="yearly circulating-supply growth, e.g. 0.05; state 0 for none")
+    p.add_argument("--peer", help="relative: peer symbol, e.g. ETH")
+    p.add_argument("--fraction", type=float, help="relative: market cap as a fraction of the peer's, e.g. 0.25")
+    p.add_argument("--horizon", type=int, default=365, help="history: days (default 365)")
+    p.add_argument("--price", type=float, help="override the live price")
+    p.add_argument("--supply", type=float, help="override the live circulating supply")
+
     p = cmd.add_parser("token", help="live market cap, FDV and supply from CoinGecko (not stored)")
     p.add_argument("symbols", nargs="+", help="coin symbols, e.g. SOL AAVE")
 
@@ -313,6 +330,50 @@ def build_parser() -> argparse.ArgumentParser:
     p = cmd.add_parser("report", help="write the deterministic daily report to reports/YYYY-MM-DD.md")
     p.add_argument("--dir", default="reports")
     return parser
+
+
+def run_valuation(conn, settings, args) -> dict:
+    """Gather inputs (live CoinGecko price and supply, stored DefiLlama fees/revenue), then compute."""
+    symbol = args.symbol.upper()
+    sources = {}
+    if args.method == "history":
+        result = valuation.history(load_daily(conn, f"coinbase:{symbol}/USD"), args.horizon)
+        return {"symbol": symbol, "case": args.case or None, **result, "data_sources": {"candles": "coinbase daily"}}
+    price, supply, live = args.price, args.supply, {}
+    peers = [args.peer.upper()] if args.method == "relative" and args.peer else []
+    if price is None or supply is None or peers:
+        live = coingecko.token_metrics(settings, [symbol, *peers])
+        sources["coingecko"] = f"{live['attribution']}, fetched {live['fetched_at']} (not stored)"
+        token = live["tokens"].get(symbol)
+        if token is None and (price is None or supply is None):
+            raise UsageError(f"CoinGecko has no {symbol}; pass --price and --supply")
+        price = price if price is not None else token["price"]
+        supply = supply if supply is not None else token["circulating_supply"]
+    if args.method == "relative":
+        if not args.peer:
+            raise UsageError("relative needs --peer and --fraction")
+        peer = live["tokens"].get(args.peer.upper())
+        if peer is None:
+            raise UsageError(f"CoinGecko has no {args.peer}")
+        result = valuation.relative(price=price, supply=supply, peer_market_cap=peer["market_cap"],
+                                    fraction=args.fraction, peer=args.peer.upper(), dilution=args.dilution,
+                                    years=args.years)
+    else:
+        metric = args.metric_value
+        if metric is None:
+            fams = fundamentals.for_symbol(conn, symbol)
+            flow = fams[0].get(f"{args.metric}_30d") if fams else None
+            if not flow:
+                raise UsageError(f"no stored {args.metric} for {symbol}: pass --metric-value (annual USD, cited)")
+            metric = flow * fundamentals.ANNUALISE_30D
+            sources["defillama"] = (f"{args.metric}_30d of family {fams[0]['family']} ({fams[0]['name']}) snapshot "
+                                    f"{fams[0]['snapshot_day']}, annualised x365/30; check the family is this project")
+        kwargs = dict(price=price, supply=supply, annual_metric=metric, multiple=args.multiple, years=args.years,
+                      dilution=args.dilution, metric_name=args.metric)
+        result = (valuation.multiple(growth=args.growth, **kwargs) if args.method == "multiple"
+                  else valuation.reverse(**kwargs))
+    return {"symbol": symbol, "case": args.case or None, **result, "data_sources": sources,
+            "label": "conditional scenario from stated assumptions, not a forecast"}
 
 
 def _market_id(conn, spec: str) -> int:
@@ -454,6 +515,8 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "valuation":
+        _out(run_valuation(conn, settings, args))
     elif c == "token":
         _out(coingecko.token_metrics(settings, args.symbols))
     elif c == "dossier":
@@ -531,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run(args, conn, settings)
     except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError,
-            tradeplan.PlanError, coingecko.CoinGeckoError) as exc:
+            tradeplan.PlanError, coingecko.CoinGeckoError, valuation.ValuationError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except privacy.PrivacyError as exc:

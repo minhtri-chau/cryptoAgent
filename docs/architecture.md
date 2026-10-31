@@ -478,6 +478,16 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.4: scenario valuation (upgrade phase B)
+
+`valuation.py` and `valuation SYM`: deterministic prices from explicitly stated assumptions. Claude proposes and cites the assumptions; Python computes.
+- **`multiple`:** future annual fees or revenue × multiple ÷ supply after dilution.
+- **`reverse`:** the growth today's price already assumes. Forward with that growth reproduces today's price exactly, which a test checks.
+- **`relative`:** price at a stated fraction of a peer's market cap.
+- **`history`:** the coin's own distribution of past returns over the horizon, with the independent sample size.
+
+Inputs: live CoinGecko price and supply (never stored), and stored DefiLlama 30-day fees or revenue × 365/30, with the family named so attribution can be checked. A missing assumption is refused, never defaulted.
+
 ## v1.2: trade plans
 
 `tradeplan.py` and `plan`, presented by the `/plan` skill, answer "what's the risk to reward of buying X now?":

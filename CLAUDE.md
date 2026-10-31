@@ -91,6 +91,11 @@ Phase A of the investment upgrade:
 - The `fundamental-analyst` subagent.
 - **Privacy:** never store the user's holdings, entry prices or personal situation in claims, the journal, predictions or recommendations. `privacy.py` refuses obvious phrasing as a backstop.
 
+Phase B: `valuation SYM --method multiple|reverse|relative|history` turns stated assumptions into scenario prices.
+- Inputs: live CoinGecko price and supply, and DefiLlama fees or revenue × 365/30. Each can be overridden.
+- **No assumption has a default.** `multiple` needs `--multiple`, `--growth`, `--years` and `--dilution`; `reverse` needs `--multiple`, `--years` and `--dilution`; `relative` needs `--peer` and `--fraction`; `history` takes `--horizon`.
+- Results are labelled conditional scenarios, never forecasts.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
