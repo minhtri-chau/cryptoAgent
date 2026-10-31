@@ -16,3 +16,4 @@ echo ==== %date% %time% >> data\logs\collect.log
 .venv\Scripts\python.exe -m cryptoagent predict baselines >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent strategy paper >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent report >> data\logs\collect.log 2>&1
+.venv\Scripts\python.exe -m cryptoagent backup >> data\logs\collect.log 2>&1

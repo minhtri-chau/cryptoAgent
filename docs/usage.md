@@ -60,6 +60,15 @@ Fees are still placeholders (0.6% + 0.2% slippage per side) until you confirm yo
 
 It needs the Claude Code command-line tool installed (`claude --version` must work), which isn't the case on this PC today. Run it by hand once and read `data/logs/daily-claude-latest.json` before scheduling it. Since you're happy to check in daily, the interactive `/daily` is the recommended way.
 
+## Backups
+
+The nightly task finishes with `backup`. It makes a consistent, integrity-checked copy of the whole database in `%USERPROFILE%\Backups\cryptoAgent` and keeps the latest 14.
+- **Local copies only protect against a corrupted or deleted database, not against losing this PC.** For that, set `CRYPTOAGENT_BACKUP_DIR` in `.env` to a personal cloud folder or an external drive.
+- **The work OneDrive is refused**, because this is a personal project.
+- **Keep the backups private**, because they contain DefiLlama data held for personal use.
+
+The code itself is on GitHub, in a private repository. The database isn't in git.
+
 ## What's never done
 
 - No trades, orders or exchange keys.

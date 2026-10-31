@@ -13,7 +13,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (calls, db, digest, fundamentals, predictions, quality, recommendations, report,
+from cryptoagent import (backup, calls, db, digest, fundamentals, predictions, quality, recommendations, report,
                          research, strategies, trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
@@ -196,6 +196,10 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
+
+    p = cmd.add_parser("backup", help="consistent, integrity-checked copy of the database; keeps the latest N")
+    p.add_argument("--dir", help=f"destination (default: CRYPTOAGENT_BACKUP_DIR or {backup.DEFAULT_DIR})")
+    p.add_argument("--keep", type=int, default=backup.DEFAULT_KEEP)
 
     cl = cmd.add_parser("call", help="outside commentators' dated calls, scored against base rates").add_subparsers(
         dest="action", required=True)
@@ -434,6 +438,9 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "backup":
+        directory = Path(args.dir or settings.secret("CRYPTOAGENT_BACKUP_DIR").reveal() or backup.DEFAULT_DIR)
+        _out(backup.run(conn, directory, args.keep))
     elif c == "call" and args.action == "add":
         _out(calls.record(conn, creator=args.creator, source_url=args.url, published_on=args.published,
                           market=args.market, call_type=args.call_type, deadline=args.deadline, recorded_by=args.by,
@@ -500,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
             print("database has pending migrations; run `python -m cryptoagent init-db` first", file=sys.stderr)
             return 2
         run(args, conn, settings)
-    except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError) as exc:
+    except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except research.ResearchError as exc:

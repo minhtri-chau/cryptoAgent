@@ -83,6 +83,8 @@ v1.1 commands:
 - `call add --creator --url --published --market --type up|down|reach_above|reach_below [--target] --deadline [--quote] --by`
 - `call list|score [--creator]`
 
+Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
+
 Research workflows:
 - `/learn-from <transcript or inbox/ file>`: a creator's rules become hypotheses and tests, and their calls are scored. Never store or scrape transcripts.
 - `/daily [unattended]`: the daily session. See `docs/usage.md`.
