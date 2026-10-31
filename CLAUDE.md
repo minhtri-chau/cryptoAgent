@@ -83,6 +83,8 @@ v1.1 commands:
 - `call add --creator --url --published --market --type up|down|reach_above|reach_below [--target] --deadline [--quote] --by`
 - `call list|score [--creator]`
 
+v1.2: `plan SOURCE:SYMBOL [--entry] [--stop price|atr:K|swing_low] [--target price|atr:K|swing_high|r:N ...] [--horizon] [--as-of]` gives a long trade plan: levels, reward-to-risk before and after costs, historical first-touch odds (volatility-adjusted, all days and same trend), and expectancy. The `/plan` skill presents it. Base rates, not forecasts. Never advise size or tell the user to buy.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:

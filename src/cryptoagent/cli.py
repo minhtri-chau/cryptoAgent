@@ -14,7 +14,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from cryptoagent import (backup, calls, db, digest, fundamentals, predictions, quality, recommendations, report,
-                         research, strategies, trials)
+                         research, strategies, tradeplan, trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -196,6 +196,15 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
+
+    p = cmd.add_parser("plan", help="long trade plan: levels, reward-to-risk, historical first-touch odds, expectancy")
+    p.add_argument("market", help="SOURCE:SYMBOL, e.g. coinbase:BTC/USD")
+    p.add_argument("--entry", type=float, help="entry price (default: latest close)")
+    p.add_argument("--stop", help="price, atr:K or swing_low (default: swing low, or 2 ATR if price is below it)")
+    p.add_argument("--target", action="append", help="price, atr:K, swing_high or r:N; repeatable (default: swing "
+                                                    "high if above entry, 2R, 3R)")
+    p.add_argument("--horizon", type=int, default=30, help="days the trade may run (default 30)")
+    p.add_argument("--as-of", help="YYYY-MM-DD: plan with only the history known then")
 
     p = cmd.add_parser("backup", help="consistent, integrity-checked copy of the database; keeps the latest N")
     p.add_argument("--dir", help=f"destination (default: CRYPTOAGENT_BACKUP_DIR or {backup.DEFAULT_DIR})")
@@ -438,6 +447,9 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "plan":
+        _out(tradeplan.plan(load_daily(conn, args.market, args.as_of), args.stop,
+                            tuple(args.target) if args.target else None, args.horizon, args.entry))
     elif c == "backup":
         directory = Path(args.dir or settings.secret("CRYPTOAGENT_BACKUP_DIR").reveal() or backup.DEFAULT_DIR)
         _out(backup.run(conn, directory, args.keep))
@@ -507,7 +519,8 @@ def main(argv: list[str] | None = None) -> int:
             print("database has pending migrations; run `python -m cryptoagent init-db` first", file=sys.stderr)
             return 2
         run(args, conn, settings)
-    except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError) as exc:
+    except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError,
+            tradeplan.PlanError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except research.ResearchError as exc:

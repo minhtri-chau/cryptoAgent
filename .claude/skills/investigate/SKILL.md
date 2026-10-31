@@ -44,6 +44,7 @@ Base it only on the evidence gathered. Fill every field:
 - **proposed action:** `buy` / `sell` / `hold` / `wait` / `no_trade`;
 - **entry conditions:** the tested pattern and conditions that must be true at a daily close;
 - **invalidation conditions:** what would make the thesis wrong before the stop;
+- **levels:** run `plan MARKET --stop atr:K --target ... --horizon DAYS` with the tested specification's stop and exit, and quote its reward-to-risk and historical first-touch odds;
 - **stop-loss method:** e.g. entry − K × ATR14, using the K that was tested, with today's level from `indicators`;
 - **profit-taking method:** the tested hold days or target;
 - **risk/reward:** from tested numbers only (mean MAE/MFE, win rate, mean return with CI). If it can't be derived from tests, write "untested";

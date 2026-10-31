@@ -475,6 +475,19 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.2: trade plans
+
+`tradeplan.py` and `plan`, presented by the `/plan` skill, answer "what's the risk to reward of buying X now?":
+- **Levels:** entry, stop and targets as prices, as % from entry and as ATR multiples, with reward-to-risk before and after round-trip costs.
+- **Historical first-touch odds:** how often the target was hit before the stop within the horizon, at the same ATR multiples, over all past days and over days in the same trend. A day touching both counts as stopped out.
+- **Expectancy** after costs.
+
+Defaults:
+- stop at the last confirmed swing low, or 2 × ATR if price has already broken below it;
+- targets at the swing high when it's above the entry, plus 2R and 3R.
+
+These are base rates including the market's drift, not forecasts. No position sizing.
+
 ## v1.1: learning from outside commentators
 
 The user wants to learn from the YouTube channels they follow, covering timing, cycles, macro, fundamentals and chart patterns. The model can't be trained on them, so their ideas enter the project as evidence to test:
