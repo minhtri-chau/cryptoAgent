@@ -74,7 +74,13 @@ v0.8 commands (strategy lifecycle, `promotion-v1`):
 v0.9 commands:
 - `ml evaluate --market --model logit|gbm --horizon --period --family --hypothesis --by`: always recorded as a trial
 
+v1.0 commands:
+- `digest [--since] [--ahead N]`: what changed since the last briefing
+- `journal add --kind briefing|note --by agent|user --text [--report] [--evidence]`
+- `journal list`
+
 Research workflows:
+- `/daily [unattended]`: the daily session. See `docs/usage.md`.
 - `/research <topic or coin>`: web research saved as cited claims.
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
 - `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`, plus `altcoin-scanner` for `/opportunities`. Every investigation records a judgment prediction and a recommendation, `no_trade` included. Reports go to `reports/research/`.
@@ -135,6 +141,7 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - Walk-forward with a purge: training rows' outcomes must be known by the forecast date. Scored against the base rate by Brier and recorded as trials.
   - Tests show the evaluation finds a planted signal and finds none in noise.
   - No ML output feeds a decision unless validation shows a Brier-gain CI90 above 0, and then only as a user-approved proposal.
+- **digest and journal** (`digest.py`, migration 008): each session starts from `digest`, which begins at the last journal briefing, and ends with a `journal add --kind briefing`. The journal is append-only.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.

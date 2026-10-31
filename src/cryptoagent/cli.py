@@ -13,8 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (db, fundamentals, predictions, quality, recommendations, report, research, strategies,
-                         trials)
+from cryptoagent import (db, digest, fundamentals, predictions, quality, recommendations, report, research,
+                         strategies, trials)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -196,6 +196,20 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
+
+    p = cmd.add_parser("digest", help="what changed since the last briefing (resolutions, data, strategies, claims)")
+    p.add_argument("--since", help="YYYY-MM-DD (default: the last journal briefing, else 7 days ago)")
+    p.add_argument("--ahead", type=int, default=7, help="list calls resolving within this many days")
+
+    jr = cmd.add_parser("journal", help="append-only research journal").add_subparsers(dest="action", required=True)
+    p = jr.add_parser("add")
+    p.add_argument("--kind", choices=("briefing", "note"), default="note")
+    p.add_argument("--by", dest="author", required=True, choices=("agent", "user"))
+    p.add_argument("--text", required=True)
+    p.add_argument("--report", help="path of the report this entry summarises")
+    p.add_argument("--evidence", help="JSON object of ids (predictions, recommendations, trials, claims)")
+    p = jr.add_parser("list")
+    p.add_argument("--limit", type=int, default=10)
 
     p = cmd.add_parser("fundamentals", help="protocol fundamentals (DefiLlama snapshots) for a token")
     p.add_argument("symbol", help="token symbol, e.g. AAVE")
@@ -401,6 +415,16 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "digest":
+        _out(digest.digest(conn, args.since, args.ahead))
+    elif c == "journal" and args.action == "add":
+        try:
+            evidence = json.loads(args.evidence) if args.evidence else None
+        except json.JSONDecodeError as exc:
+            raise UsageError(f"--evidence is not valid JSON: {exc}") from exc
+        _out({"journal_id": digest.add_entry(conn, args.kind, args.author, args.text, args.report, evidence)})
+    elif c == "journal" and args.action == "list":
+        _out(digest.list_entries(conn, args.limit))
     elif c == "fundamentals":
         rows = fundamentals.for_symbol(conn, args.symbol, args.as_of)
         _out({"symbol": args.symbol.upper(), "families": rows,

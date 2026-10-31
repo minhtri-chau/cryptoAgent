@@ -131,7 +131,7 @@ cli           every reading command prints JSON; validation errors exit with sta
 | v0.7 | Research knowledge base and DefiLlama fundamentals (daily point-in-time snapshots) |
 | v0.8 | Strategy improvement loop: proposal → validation gate → user-authorised sealed test → paper forward test → user approval |
 | v0.9 | ML baselines (logistic, gradient boosting), walk-forward evaluated against the base rate as trials |
-| v1.0 | Automated model interface (Claude API or another provider) |
+| v1.0 | Daily use: `digest`, journal, `/daily` skill, usage guide; optional headless runner (Claude Code `-p`, off by default) |
 
 At the end of each phase, commit and add an annotated tag (`v0.N`).
 
@@ -447,6 +447,32 @@ The brief: don't introduce complex models before the simple baselines are reliab
 3. `ml evaluate` records a trial; the sealed-test rules apply.
 4. BTC is evaluated in train at 30 and 90 days for both models, and the result is recorded in the decision log whatever it is.
 5. The report lists every method evaluation (analogues and ML) against the base rate.
+
+## v1.0 design: daily use
+
+The user chose to interact with the agent daily, so v1.0 makes the interactive session the main interface and keeps automation optional.
+
+- **`digest`:** a deterministic summary of what changed since the last journal briefing:
+  - data freshness, plus failed or killed runs;
+  - new quality issues;
+  - resolved predictions and recommendations;
+  - calls due soon;
+  - strategy events and paper trades;
+  - trials run;
+  - claims due for review.
+- **Journal** (migration 008): append-only daily briefings and user notes, so each session continues from the record.
+- **`/daily` skill:** digest, then fix stale data, score what resolved, summarise the market, check open calls against their invalidation, investigate at most one market and only when something qualifies, record a briefing, and list the decisions waiting for the user.
+- **Optional unattended run** (`scripts/daily_claude.cmd`): Claude Code headless mode (`claude -p "/daily unattended"`) on the user's subscription. Tools are restricted to the project CLI, reading files, editing `reports/` and subagents. Turns are capped. Off by default and untested, because the Claude Code CLI isn't installed on this PC.
+- **Provider independence:** every number and record goes through the CLI's JSON. Another model or the Claude API can drive the same commands; only the skills' prose is Claude-specific.
+- **Usage guide:** `docs/usage.md`.
+
+## v1.0 acceptance criteria
+
+1. `digest` reports exactly what happened after the last briefing, and surfaces failed and killed runs and calls due soon (tests).
+2. The journal is append-only (test).
+3. `/daily` exists and follows the record-first, investigate-rarely, user-decides rules.
+4. The optional headless runner exists, is off by default, and is documented as untested.
+5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
 ## Main risks
 
