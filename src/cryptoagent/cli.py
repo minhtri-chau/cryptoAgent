@@ -13,8 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier, fundamentals, predictions, privacy,
-                         quality, recommendations, report, research, strategies, tradeplan, trials, valuation)
+from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier, fundamentals, hypotheses, predictions,
+                         privacy, quality, recommendations, report, research, strategies, tradeplan, trials, valuation)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -296,6 +296,94 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", choices=("fact", "hypothesis"))
     p.add_argument("--all", action="store_true", help="include superseded claims")
     p.add_argument("--due", action="store_true", help="only claims whose review date has passed")
+
+    def source_args(p):
+        p.add_argument("--creator", required=True)
+        p.add_argument("--url", required=True, help="with a timestamp where possible, e.g. &t=754s")
+        p.add_argument("--published", required=True, help="YYYY-MM-DD the source was published")
+        p.add_argument("--date-basis", required=True, help="how the date was established, e.g. 'upload date checked'")
+        p.add_argument("--quote", help="25 words at most")
+        p.add_argument("--by", required=True, choices=("agent", "user"))
+
+    hy = cmd.add_parser("hypothesis", help="registry of ideas from outside sources, tested blind").add_subparsers(
+        dest="action", required=True)
+    p = hy.add_parser("add", help="register a neutrally stated hypothesis or historical observation")
+    p.add_argument("--slug", required=True, help="lowercase-hyphenated name, e.g. weekly-pivot-failure")
+    p.add_argument("--kind", required=True, choices=hypotheses.KINDS)
+    p.add_argument("--subject", required=True, help="MARKET or a coin symbol")
+    p.add_argument("--text", required=True, help="precise definition, without naming the source")
+    p.add_argument("--conditions", required=True, help="market conditions it applies to")
+    p.add_argument("--data", required=True, help="data the test needs")
+    p.add_argument("--method", required=True, help="how it would be tested or checked")
+    p.add_argument("--refines", type=int, help="id of the hypothesis this one refines")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = hy.add_parser("source", help="record that a source stated this hypothesis")
+    p.add_argument("id", type=int)
+    source_args(p)
+    p = hy.add_parser("alt", help="a competing explanation and the benchmark that separates it")
+    p.add_argument("id", type=int)
+    p.add_argument("--text", required=True)
+    p.add_argument("--benchmark", required=True)
+    p = hy.add_parser("evidence")
+    p.add_argument("id", type=int)
+    p.add_argument("--direction", required=True, choices=hypotheses.DIRECTIONS)
+    p.add_argument("--basis", required=True, choices=hypotheses.BASES)
+    p.add_argument("--text", required=True)
+    p.add_argument("--cite", required=True,
+                   help="trial:<id>, prediction:<id>, claim:<id>, url:https://... or command:<cryptoagent arguments>")
+    p.add_argument("--data-through", help="YYYY-MM-DD, required for command citations")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = hy.add_parser("status")
+    p.add_argument("id", type=int)
+    p.add_argument("--to", required=True)
+    p.add_argument("--trials", help="comma-separated trial ids in family hyp:<id>")
+    p.add_argument("--note")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = hy.add_parser("list")
+    p.add_argument("--status")
+    p.add_argument("--kind", choices=hypotheses.KINDS)
+    p = hy.add_parser("show")
+    p.add_argument("id", type=int)
+    p = hy.add_parser("brief", help="source-blind brief for the quant researcher")
+    p.add_argument("id", type=int)
+    p = hy.add_parser("similar", help="possible duplicates among hypotheses and concepts")
+    p.add_argument("text")
+
+    co = cmd.add_parser("concept", help="analytical frameworks, kept but never promoted to rules").add_subparsers(
+        dest="action", required=True)
+    p = co.add_parser("add")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--name", required=True)
+    p.add_argument("--text", required=True, help="summary in our own words")
+    p.add_argument("--use", required=True, help="how the agent uses it")
+    p.add_argument("--limits", required=True, help="what it is not evidence for")
+    p.add_argument("--supersedes", type=int)
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = co.add_parser("source")
+    p.add_argument("id", type=int)
+    source_args(p)
+    co.add_parser("list")
+
+    sc = cmd.add_parser("scenario", help="a source's conditional prediction, monitored with criteria we wrote"
+                        ).add_subparsers(dest="action", required=True)
+    p = sc.add_parser("add")
+    p.add_argument("--creator", required=True)
+    p.add_argument("--url", required=True)
+    p.add_argument("--published", required=True)
+    p.add_argument("--date-basis", required=True)
+    p.add_argument("--text", required=True, help="the scenario, paraphrased")
+    p.add_argument("--resolution", required=True, help="our criteria for met / not met")
+    p.add_argument("--deadline", required=True)
+    p.add_argument("--hypothesis", type=int)
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = sc.add_parser("resolve")
+    p.add_argument("id", type=int)
+    p.add_argument("--outcome", required=True, choices=hypotheses.OUTCOMES)
+    p.add_argument("--note", required=True)
+    p.add_argument("--cite", required=True, help="the command or record that settles it")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    p = sc.add_parser("list")
+    p.add_argument("--creator")
 
     mlp = cmd.add_parser("ml", help="machine-learning baselines, judged against the base rate").add_subparsers(
         dest="action", required=True)
@@ -581,6 +669,46 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
     elif c == "note" and args.action == "list":
         _out(research.list_claims(conn, args.topic, args.subject, args.status, include_superseded=args.all,
                                   due_for_review=args.due))
+    elif c in ("hypothesis", "concept") and args.action == "source":
+        target = {"hypothesis_id": args.id} if c == "hypothesis" else {"concept_id": args.id}
+        _out(hypotheses.add_mention(conn, creator=args.creator, url=args.url, published_on=args.published,
+                                    date_basis=args.date_basis, quote=args.quote, recorded_by=args.by, **target))
+    elif c == "hypothesis" and args.action == "add":
+        _out(hypotheses.add_hypothesis(conn, slug=args.slug, kind=args.kind, subject=args.subject, statement=args.text,
+                                       conditions=args.conditions, required_data=args.data, methodology=args.method,
+                                       created_by=args.by, refines_id=args.refines))
+    elif c == "hypothesis" and args.action == "alt":
+        _out(hypotheses.add_alternative(conn, args.id, args.text, args.benchmark))
+    elif c == "hypothesis" and args.action == "evidence":
+        _out(hypotheses.add_evidence(conn, args.id, direction=args.direction, basis=args.basis, summary=args.text,
+                                     cite=args.cite, created_by=args.by, data_through=args.data_through))
+    elif c == "hypothesis" and args.action == "status":
+        try:
+            trial_ids = [int(t) for t in args.trials.split(",")] if args.trials else []
+        except ValueError as exc:
+            raise UsageError("--trials expects comma-separated integers") from exc
+        _out(hypotheses.set_status(conn, args.id, args.to, args.by, args.note, trial_ids))
+    elif c == "hypothesis" and args.action == "list":
+        _out(hypotheses.list_hypotheses(conn, args.status, args.kind))
+    elif c == "hypothesis" and args.action == "show":
+        _out(hypotheses.show(conn, args.id))
+    elif c == "hypothesis" and args.action == "brief":
+        _out(hypotheses.brief(conn, args.id))
+    elif c == "hypothesis" and args.action == "similar":
+        _out(hypotheses.similar(conn, args.text))
+    elif c == "concept" and args.action == "add":
+        _out(hypotheses.add_concept(conn, slug=args.slug, name=args.name, summary=args.text, usage=args.use,
+                                    limits=args.limits, created_by=args.by, supersedes_id=args.supersedes))
+    elif c == "concept" and args.action == "list":
+        _out(hypotheses.list_concepts(conn))
+    elif c == "scenario" and args.action == "add":
+        _out(hypotheses.add_scenario(conn, creator=args.creator, url=args.url, published_on=args.published,
+                                     date_basis=args.date_basis, description=args.text, resolution=args.resolution,
+                                     deadline=args.deadline, recorded_by=args.by, hypothesis_id=args.hypothesis))
+    elif c == "scenario" and args.action == "resolve":
+        _out(hypotheses.resolve_scenario(conn, args.id, args.outcome, args.note, args.cite, args.by))
+    elif c == "scenario" and args.action == "list":
+        _out(hypotheses.list_scenarios(conn, args.creator))
     elif c == "ml" and args.action == "evaluate":
         _out(trials.run_ml_trial(conn, args.market, args.model, args.horizon, args.period, args.family,
                                  args.hypothesis, args.by))
@@ -612,7 +740,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run(args, conn, settings)
     except (UsageError, UnknownMarket, LedgerError, SpecError, strategies.StrategyError, backup.BackupError,
-            tradeplan.PlanError, coingecko.CoinGeckoError, valuation.ValuationError) as exc:
+            tradeplan.PlanError, coingecko.CoinGeckoError, valuation.ValuationError, hypotheses.RegistryError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except privacy.PrivacyError as exc:

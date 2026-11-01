@@ -100,6 +100,24 @@ Phase D: `compare COIN COIN ... [--horizon 365] [--no-live]` puts identical fact
 - It gives no scores and no ranking.
 - A zero-TVL DefiLlama family is flagged as not comparable.
 
+v1.7, learning upgrade phase A (the hypothesis registry, migration 010):
+- `hypothesis add --slug --kind testable|observation --subject --text --conditions --data --method --by` registers an idea stated neutrally.
+- `hypothesis source ID --creator --url --published --date-basis [--quote] --by` records who said it.
+  - Independent support counts distinct creators; one creator repeating an idea adds mentions only.
+  - The idea's wording must not name its source.
+- `hypothesis alt ID --text --benchmark` records a competing explanation and the benchmark that would separate the two.
+- `hypothesis evidence ID --direction supports|contradicts|neutral --basis retrospective|forward --text --cite trial:|prediction:|claim:|url:|command: [--data-through] --by`
+  - `forward` evidence must be a prediction recorded after the hypothesis was registered.
+  - A `command:` citation needs `--data-through`.
+- `hypothesis status ID --to STATUS [--trials ids] [--note] --by`
+  - Only the transitions listed for the hypothesis's kind are allowed.
+  - Train and validation verdicts must cite trials in family `hyp:<id>`.
+- `hypothesis list|show|brief|similar`
+  - `brief` is the source-blind brief for quant-researcher.
+  - `similar` finds possible duplicates.
+- `concept add|source|list` keeps analytical frameworks, which are never promoted to rules.
+- `scenario add|resolve|list` records a source's conditional predictions, with resolution criteria we wrote. They are never scored as the creator's; exact calls still go to `call add`.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
@@ -175,6 +193,12 @@ The layers are described in [docs/architecture.md](docs/architecture.md). In sho
   - No ML output feeds a decision unless validation shows a Brier-gain CI90 above 0, and then only as a user-approved proposal.
 - **digest and journal** (`digest.py`, migration 008): each session starts from `digest`, which begins at the last journal briefing, and ends with a `journal add --kind briefing`. The journal is append-only.
 - **calls** (`calls.py`, migration 009): outside commentators' dated calls, anchored to the publication-day close, resolved by the market, and compared with a pre-publication base rate. Forward and historical calls are scored apart.
+- **hypotheses** (`hypotheses.py`, migration 010): the registry of outside ideas, all append-only. It holds:
+  - neutral hypotheses with source mentions, alternatives, evidence and status events (with per-kind transitions enforced by a trigger);
+  - concepts;
+  - source scenarios.
+
+  Testable ideas from creators go here, not into claims; claims keep facts and judgment conclusions. Nothing in the registry changes a strategy or rule; promotion still goes through `strategies`.
 - **Macro (FRED):** not integrated. FRED's terms forbid storing its content without written consent (`docs/data-sources.md`).
 - **timeframes:** candles are stored as `1d` and `1h` (BTC and ETH only). `4h` is built from complete hours, and `1w` from complete days. Backfill state is per market and timeframe in `market_backfill`.
 - **patterns** (`quant/patterns.py`): the only setups that can be backtested.

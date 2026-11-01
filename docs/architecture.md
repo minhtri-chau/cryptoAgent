@@ -28,6 +28,7 @@ There is no automated trading: the user approves and executes every financial ac
 | 2026-10-31 | **First pooled test (trial 21):** oversold 20-day breakdowns with BTC above its EMA200, across universe-v2, in train. 81 trades but only 23 distinct signal weeks; week-clustered CI90 (−6.0%, +12.6%); returns after the signal below drift; positive in 2 of 6 years. Not supported, so validation was not run. |
 | 2026-11-01 | **CoinGecko is fetched live and never stored.** Its API terms (5 September 2025) discourage storage (§6.1), require a refresh at least every 24 hours, encryption for stored data, and deletion on termination, and ban storage not expressly permitted (§6.2). Market cap, FDV and supply are therefore fetched when a question needs them and shown with "Data provided by CoinGecko". There's no CoinGecko history and no backtests on it. |
 | 2026-11-01 | **DefiLlama attribution tightened.** A family counts for a token only with TVL of at least $1M, or fees or revenue above zero; 244 of 380 stored families were under $1M, some merely sharing a symbol (e.g. "Solana Farm" for SOL). The fundamental-analyst must also check that a family's name matches the project. |
+| 2026-11-01 | **Learning upgrade approved by the user, pilot first.** `/learn-from` becomes a registry of neutral hypotheses tested source-blind, with independent support counted per creator, forward evidence that must postdate registration, competing explanations, and concepts that are kept but never promoted. Phases: A (registry), B (skill and agents), C (weekly definitions and `cycles`, only as the pilot showed), D (forward monitoring through predictions). No automatic changes to strategies or rules. |
 | 2026-11-01 | **Investment-intelligence upgrade approved by the user.** The phases run A (dossier, privacy separation, fundamental-analyst, CoinGecko supply/FDV snapshots), then B (scenario valuation), C (`/advise`) and D (`/compare`). Framing: research assessments, conclusion first, not licensed financial advice, no position sizing or allocation. Personal holdings and entry prices are never stored. CoinGecko Demo approved as the supply, market cap and FDV source, subject to its terms; the user supplies the free key. |
 | 2026-10-31 | **User reviewed the Coinbase and Bitstamp terms** and confirmed that personal research use of their public market data is fine. The pending version tags were added (v0.1–v1.1). |
 | 2026-10-31 | **ML baselines lost to the base rate.** On bitstamp:BTC/USD train, Brier skill was −11.0% for ml-logit-v1 at 30 days (trial 22) and −6.3% at 90 days (trial 23); ml-gbm-v1 scored −18.5% at 30 days (trial 24, CI90 entirely below 0: significantly worse) and −35.3% at 90 days (trial 25). The more flexible the model, the worse it did. Validation was not run, and ML output is not used. The same evaluation finds a planted signal in tests, so this is a finding about the data, not a blind spot in the method. |
@@ -477,6 +478,29 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 3. `/daily` exists and follows the record-first, investigate-rarely, user-decides rules.
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
+
+## v1.7: hypothesis registry (learning upgrade phase A)
+
+The user approved upgrading `/learn-from` into evidence-based learning from outside analysts (2026-11-01). Analysts influence which questions get investigated, not the conclusions. The design came from a pilot on one Benjamin Cowen video, with nothing stored (`reports/research/learn-2026-11-01-cowen-pilot.md`). The pilot found:
+- all six knowledge types appear;
+- historical observations that our data can check were the most useful material;
+- the claims ledger can't cite our own data;
+- his predictions were conditional paths that the call ledger can't hold;
+- no hypothesis could be backtested without weekly definitions.
+
+Migration 010 and `hypotheses.py` add:
+
+| Record | Holds | Rule enforced |
+|---|---|---|
+| `hypotheses` | A neutral definition, conditions, required data, methodology; kind `testable` or `observation` | Append-only; a changed idea is a refinement (`refines_id`) |
+| `source_mentions` | Creator, URL, publication date, how the date was established, a quote of ≤25 words | Independent support = distinct creators. The idea and its alternatives must not name a source, so `brief` stays blind. |
+| `hypothesis_alternatives` | Competing explanation and benchmark | — |
+| `hypothesis_evidence` | Supports, contradicts or neutral, retrospective or forward, citing a trial, prediction, claim, URL or CLI command | `forward` must be a prediction recorded after registration; a command citation carries its data date |
+| `hypothesis_events` | Status | Per-kind transitions, enforced by a trigger. Train and validation verdicts must cite `hyp:<id>` trials of the right period. Observation verdicts need retrospective evidence. |
+| `concepts` | Frameworks in our own words, how they're used, their limits | No status, so no path to validation |
+| `source_scenarios` | A source's conditional prediction plus the resolution criteria we wrote | Resolved once; never in `call score` |
+
+Phase B rewrites `/learn-from`, quant-researcher and risk-reviewer to use the registry. Until then, `/learn-from` still describes the old flow (claims and `learn:<creator>` families). Phases C (weekly definitions, `cycles`) and D (forward monitoring) follow, as approved.
 
 ## v1.6: `/compare` (upgrade phase D)
 
