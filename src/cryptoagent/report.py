@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from cryptoagent import calls, predictions, quality, recommendations, strategies
+from cryptoagent import calls, hypotheses, monitors, predictions, quality, recommendations, strategies
 from cryptoagent.quant import analogs, indicators, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
@@ -233,6 +233,28 @@ def _creators_section(conn) -> list[str]:
     return lines
 
 
+def _hypotheses_section(conn) -> list[str]:
+    watched = monitors.list_monitors(conn)
+    scenarios = [s for s in hypotheses.list_scenarios(conn) if s["outcome"] is None]
+    if not watched and not scenarios:
+        return []
+    lines = ["## Outside ideas under watch", "",
+             "Registry hypotheses with a forward monitor (predictions `hyp_<id>`, scored above against base_rate_v1) "
+             "and open source scenarios (resolution criteria written by us; never scored as the creator's).", ""]
+    if watched:
+        lines += ["| Hypothesis | Status | Market | Pattern | Horizon | Predictions | Latest |", "|---|---|---|---|---|---|---|"]
+        for m in watched:
+            latest = m["predictions"][-1]["as_of"] if m["predictions"] else "none yet"
+            lines.append(f"| #{m['hypothesis_id']} | {m['hypothesis_status']} | {m['market']} | {m['pattern']} | "
+                         f"{m['horizon_days']}d | {len(m['predictions'])} | {latest} |")
+    if scenarios:
+        lines += ["", "| Scenario | Creator | Deadline | Due | Resolution (ours) |", "|---|---|---|---|---|"]
+        for s in scenarios:
+            lines.append(f"| #{s['id']} | {s['creator']} | {s['deadline']} | {'**yes**' if s['due'] else 'no'} | "
+                         f"{s['resolution']} |")
+    return lines
+
+
 def _strategies_section(conn) -> list[str]:
     rows = strategies.list_strategies(conn)
     lines = [f"## Strategies ({strategies.POLICY})", ""]
@@ -259,7 +281,8 @@ def render(conn: sqlite3.Connection) -> str:
         _data_section(conn), _regime_section(conn), _analog_section(conn), _method_section(conn),
         _indicator_section(conn),
         _predictions_section(conn),
-        _scorecard_section(conn), _recommendations_section(conn), _creators_section(conn), _strategies_section(conn),
+        _scorecard_section(conn), _recommendations_section(conn), _creators_section(conn), _hypotheses_section(conn),
+        _strategies_section(conn),
         _scanner_section(conn),
         ["## Sources", "", "Reference prices: Coin Metrics Community (CC BY-NC 4.0). Candles: Coinbase Exchange and "
          "Bitstamp public market data."],

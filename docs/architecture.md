@@ -479,6 +479,26 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.10: forward monitoring (learning upgrade phase D)
+
+An analyst's history is in-sample for them, so the only clean evidence about their idea comes after it's registered. Migration 011 and `monitors.py` add that evidence:
+
+**Monitors:**
+- Each monitor is a registry hypothesis's signal (a pattern plus conditions) on one market, at one baseline horizon.
+- Each day `monitor run` (in the daily task) checks the latest candle. When the signal is active, it records a model prediction `hyp_<id>` bound to that candle, and links it to the hypothesis as forward evidence.
+- **The probability (`hyp-monitor-v1`):** the conditional share up over past signal windows, shrunk toward the base rate with a prior weight of 20: (k + 20 × b) ÷ (n + 20). With 3–6 past signals it stays near the base rate. The scorecard compares it with `base_rate_v1` on the same day and horizon.
+- **Rules:** nothing is back-recorded, and monitors of retired hypotheses stop.
+- **First monitors** (coinbase:BTC/USD):
+  - #8 (`weekly_pivot_failure`) at 30 and 90 days;
+  - #19 (`two_weekly_closes_below_sma52`) at 90 and 365 days;
+  - #26 (`long_sub200_reclaim`) at 365 days.
+  
+  None fired on 2026-10-31. `weekly_pivot_failure` fired on 2026-10-25, before monitoring existed, so it isn't recorded.
+
+**The conditional baseline:** `baseline` closes the gap found in the blind tests, where "vs other downtrend days" couldn't be computed. It's descriptive, not a trial, and covers train or validation only. For #19, at 182 days the event (−13.2%, 25% up) underperformed other downtrend days (+28.2%, 51% up). At 365 days its mean was higher (+251.9% vs +123.7%) but its share up was lower (75% vs 83%). With 4 events that's still inconclusive.
+
+**The report** has a new "Outside ideas under watch" section: the monitors with their predictions, and the open source scenarios with their resolution criteria.
+
 ## v1.9: weekly definitions and `cycles` (learning upgrade phase C)
 
 Built only what the pilot and the first three videos needed. Log-regression bands and ETH/BTC are deferred.

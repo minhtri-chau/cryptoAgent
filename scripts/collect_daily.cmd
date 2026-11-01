@@ -1,5 +1,5 @@
 @echo off
-rem Daily deterministic pipeline (no AI): collect -> quality -> evaluate -> baseline predictions -> report (incl. scanner).
+rem Daily deterministic pipeline (no AI): collect -> quality -> evaluate -> baseline predictions -> hypothesis monitors -> report (incl. scanner).
 rem Run by the "cryptoAgent daily collect" scheduled task; see scripts\register_daily_task.ps1.
 rem Safe to run by hand: only complete UTC days are stored and nothing is recorded twice.
 cd /d "%~dp0.."
@@ -14,6 +14,7 @@ echo ==== %date% %time% >> data\logs\collect.log
 .venv\Scripts\python.exe -m cryptoagent quality --limit 0 > data\logs\quality-latest.json 2>> data\logs\collect.log
 .venv\Scripts\python.exe -m cryptoagent evaluate >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent predict baselines >> data\logs\collect.log 2>&1
+.venv\Scripts\python.exe -m cryptoagent monitor run >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent strategy paper >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent report >> data\logs\collect.log 2>&1
 .venv\Scripts\python.exe -m cryptoagent backup >> data\logs\collect.log 2>&1

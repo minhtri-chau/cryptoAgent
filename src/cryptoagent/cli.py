@@ -13,8 +13,9 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier, fundamentals, hypotheses, predictions,
-                         privacy, quality, recommendations, report, research, strategies, tradeplan, trials, valuation)
+from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier, fundamentals, hypotheses, monitors,
+                         predictions, privacy, quality, recommendations, report, research, strategies, tradeplan, trials,
+                         valuation)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -354,6 +355,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("id", type=int)
     p = hy.add_parser("similar", help="possible duplicates among hypotheses and concepts")
     p.add_argument("text")
+
+    mo = cmd.add_parser("monitor", help="forward monitoring of registry hypotheses").add_subparsers(
+        dest="action", required=True)
+    p = mo.add_parser("add", help="watch a hypothesis's signal on one market at one horizon")
+    p.add_argument("id", type=int, help="hypothesis id")
+    p.add_argument("--market", required=True)
+    p.add_argument("--pattern", required=True)
+    p.add_argument("--when", action="append", default=[], help="'[MARKET] FIELD OP VALUE'; repeatable")
+    p.add_argument("--horizon", type=int, required=True, help="days: 7, 30, 90 or 365")
+    p.add_argument("--by", required=True, choices=("agent", "user"))
+    mo.add_parser("list")
+    mo.add_parser("run", help="record a prediction for every monitor whose signal is active today (daily task)")
+
+    p = cmd.add_parser("baseline", help="forward returns on days meeting conditions vs all days (train/validation)")
+    p.add_argument("--market", required=True)
+    p.add_argument("--horizon", type=int, required=True)
+    p.add_argument("--when", action="append", default=[], help="'[MARKET] FIELD OP VALUE'; repeatable")
+    p.add_argument("--period", required=True, choices=monitors.BASELINE_PERIODS)
 
     co = cmd.add_parser("concept", help="analytical frameworks, kept but never promoted to rules").add_subparsers(
         dest="action", required=True)
@@ -705,6 +724,16 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(hypotheses.brief(conn, args.id))
     elif c == "hypothesis" and args.action == "similar":
         _out(hypotheses.similar(conn, args.text))
+    elif c == "monitor" and args.action == "add":
+        _out(monitors.add_monitor(conn, args.id, args.market, args.pattern, [parse_when(w) for w in args.when],
+                                  args.horizon, args.by))
+    elif c == "monitor" and args.action == "list":
+        _out(monitors.list_monitors(conn))
+    elif c == "monitor" and args.action == "run":
+        _out(monitors.run(conn))
+    elif c == "baseline":
+        _out(monitors.conditional_baseline(conn, args.market, args.horizon, [parse_when(w) for w in args.when],
+                                           args.period))
     elif c == "concept" and args.action == "add":
         _out(hypotheses.add_concept(conn, slug=args.slug, name=args.name, summary=args.text, usage=args.use,
                                     limits=args.limits, created_by=args.by, supersedes_id=args.supersedes))

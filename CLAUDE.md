@@ -134,6 +134,15 @@ v1.9, learning upgrade phase C (weekly definitions and `cycles`):
   
   A week (Monday to Sunday) is known at its Sunday close.
 
+v1.10, learning upgrade phase D (forward monitoring):
+- `baseline --market --horizon [--when ...] --period train|validation` gives forward returns on days meeting the conditions (e.g. all downtrend days) against all days. It's the benchmark for a signal tested inside a regime. It never reads the sealed test period and isn't a trial.
+- `monitor add ID --market --pattern [--when] --horizon 7|30|90|365 --by` watches a registry hypothesis's signal. `monitor list` shows each monitor with its predictions.
+- `monitor run` runs in the daily task:
+  - When a signal is active on the latest candle, it records the prediction `hyp_<id>` (`hyp-monitor-v1`): (k + 20 × base) ÷ (n + 20), over past signal windows. It links the prediction to the hypothesis as forward evidence.
+  - Signals from days before a monitor existed are never back-recorded.
+  - A retired hypothesis's monitors stop.
+- The report's "Outside ideas under watch" section lists the monitors and the open source scenarios.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
@@ -155,7 +164,7 @@ Research workflows:
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
 - `/investigate <coin> [short|swing|long]` (`.claude/skills/investigate/`). It drives subagents in `.claude/agents/`: `bitcoin-analyst`, `technical-analyst`, `quant-researcher` and `risk-reviewer`, plus `altcoin-scanner` for `/opportunities`. Every investigation records a judgment prediction and a recommendation, `no_trade` included. Reports go to `reports/research/`.
 
-The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality → evaluate → baselines → report) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
+The "cryptoAgent daily collect" Windows task runs `scripts/collect_daily.cmd` (collect all → quality → evaluate → baselines → hypothesis monitors → report) at 9 PM local, after the 00:00 UTC daily close, logging to `data/logs/collect.log`. Re-register it with `scripts/register_daily_task.ps1`.
 
 Every command that reads data prints JSON. Validation errors exit with status 2. Pass `--db <path>` to run against a scratch database.
 

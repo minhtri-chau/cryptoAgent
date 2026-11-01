@@ -37,6 +37,7 @@ When the lead gives you the output of `hypothesis brief ID`, that is all you nee
 - Use the brief's family (`hyp:<ID>`) **exactly** for every run, including benchmark runs. A status change is checked against trials in that family.
 - Run the hypothesis **and at least one benchmark** from its `alternatives`, so the report says whether it adds anything beyond the simpler explanation. A benchmark that's plain drift is already in every result (`forward_returns.all_days`). Say so instead of running it.
 - If the brief can't be expressed exactly with the available patterns and `--when` fields, say so and run nothing. Never approximate.
+- For a benchmark that's a regime rather than a pattern (e.g. "other downtrend days"), use `baseline --market M --horizon H --when "..." --period train|validation`. It's descriptive and isn't recorded as a trial.
 - Report each run's trial ID, and a verdict of supported, not supported or inconclusive against the benchmark.
 
 ## Proposing a strategy

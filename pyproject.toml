@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptoagent"
-version = "1.9.0"
+version = "1.10.0"
 description = "Crypto Intelligence Agent: data, quant and storage layers"
 requires-python = ">=3.11"
 dependencies = ["ccxt>=4.5", "numpy>=1.26", "pandas>=2.2", "scikit-learn>=1.5"]

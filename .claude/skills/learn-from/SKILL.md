@@ -98,6 +98,12 @@ For each candidate concept or hypothesis:
 
   Add evidence for each trial: `--basis retrospective --cite trial:ID`.
 - **Hindsight:** data before a source's publication date is **in-sample for the source**. They may have fitted the idea to it, so any test on it is retrospective. Only predictions recorded after registration (Phase D) are forward evidence.
+- **Forward monitoring:** once a hypothesis can be expressed as a pattern (with conditions), add a monitor, whatever its train verdict, unless it's retired:
+  ```
+  monitor add ID --market coinbase:<COIN>/USD --pattern ... [--when ...] --horizon 7|30|90|365 --by agent
+  ```
+  The daily task records `hyp_<id>` predictions when it fires. They are the only forward evidence.
+- A benchmark inside a regime (e.g. "vs other downtrend days") comes from `baseline --when ... --period train`, never from the test period.
 - Cycle and halving ideas rest on about 3–4 cycles. Say the sample can't confirm them, whatever the test shows.
 
 ## 5. Challenge
