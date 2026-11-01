@@ -44,7 +44,9 @@ def _data_section(conn) -> list[str]:
         " (SELECT count(*) FROM markets WHERE source_id = s.id) AS markets,"
         " coalesce((SELECT substr(max(c.ts), 1, 10) FROM candles c JOIN markets m ON m.id = c.market_id"
         "  WHERE m.source_id = s.id AND c.timeframe = '1d'),"
-        " (SELECT max(day) FROM reference_prices WHERE source_id = s.id)) AS latest"
+        " (SELECT max(day) FROM reference_prices WHERE source_id = s.id),"
+        " (SELECT max(o.day) FROM fundamental_obs o JOIN fundamental_entities e ON e.id = o.entity_id"
+        "  WHERE e.source_id = s.id)) AS latest"
         " FROM sources s ORDER BY s.name"
     ).fetchall()
     yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
@@ -167,10 +169,10 @@ def _scorecard_section(conn) -> list[str]:
     lines = ["## Scorecard", ""]
     if not cards:
         return lines + ["No predictions yet."]
-    lines += ["| Model | Horizon | Resolved (≈independent) | Open | Brier | Skill vs base rate | Hit rate |",
-              "|---|---|---|---|---|---|---|"]
+    lines += ["| Market | Model | Horizon | Resolved (≈independent) | Open | Brier | Skill vs base rate | Hit rate |",
+              "|---|---|---|---|---|---|---|---|"]
     for c in cards:
-        lines.append(f"| {c['source']}:{c['model']} | {c['horizon_days']}d | {c['resolved']} "
+        lines.append(f"| {c['market']} | {c['source']}:{c['model']} | {c['horizon_days']}d | {c['resolved']} "
                      f"({c.get('approx_independent', 0)}) | {c['open']} | {_fmt(c.get('brier'))} | "
                      f"{_fmt(c.get('brier_skill_vs_base_rate'))} | {_fmt(c.get('hit_rate'), 'level')} |")
     if any("warning" in c for c in cards):
