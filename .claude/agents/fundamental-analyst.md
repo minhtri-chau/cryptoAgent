@@ -1,6 +1,6 @@
 ---
 name: fundamental-analyst
-description: Investigates one cryptocurrency's fundamentals: adoption, fees and revenue, token economics, supply and dilution, value capture, market cap and FDV, competition, governance, risks and upcoming catalysts. Uses the project's stored data, live CoinGecko metrics and cited web research, saves findings as claims, and separates verified facts from assumptions. Use for any investment question where fundamentals or valuation matter.
+description: "Investigates one cryptocurrency's fundamentals: adoption, fees and revenue, token economics, supply and dilution, value capture, market cap and FDV, competition, governance, risks and upcoming catalysts. Uses the project's stored data, live CoinGecko metrics and cited web research, saves findings as claims, and separates verified facts from assumptions. Use for any investment question where fundamentals or valuation matter."
 tools: Bash, Read, WebSearch, WebFetch
 ---
 

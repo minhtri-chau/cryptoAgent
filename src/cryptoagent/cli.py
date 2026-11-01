@@ -13,8 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from cryptoagent import (backup, calls, coingecko, db, digest, dossier, fundamentals, predictions, privacy, quality,
-                         recommendations, report, research, strategies, tradeplan, trials, valuation)
+from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier, fundamentals, predictions, privacy,
+                         quality, recommendations, report, research, strategies, tradeplan, trials, valuation)
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
@@ -196,6 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_parser("paper", help="daily: record paper signals, resolve paper trades, apply the review gate")
     p = st.add_parser("signals", help="signals of approved strategies on the latest day")
     p.add_argument("--as-of")
+
+    p = cmd.add_parser("compare", help="side-by-side facts for 2-6 coins on identical criteria (no scores)")
+    p.add_argument("symbols", nargs="+", help="coin symbols, e.g. ETH SOL")
+    p.add_argument("--horizon", type=int, default=365, help="days for the history and plan columns (default 365)")
+    p.add_argument("--no-live", action="store_true", help="skip live CoinGecko market cap and dilution")
 
     p = cmd.add_parser("valuation", help="scenario valuation from stated assumptions (conditional, not a forecast)")
     p.add_argument("symbol", help="coin symbol, e.g. AAVE")
@@ -515,6 +520,19 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(strategies.paper_step(conn))
     elif c == "strategy" and args.action == "signals":
         _out(strategies.approved_signals(conn, args.as_of))
+    elif c == "compare":
+        tokens, live_note = {}, None
+        if not args.no_live:
+            try:
+                live = coingecko.token_metrics(settings, args.symbols)
+                tokens, live_note = live["tokens"], f"{live['attribution']}, fetched {live['fetched_at']} (not stored)"
+            except coingecko.CoinGeckoError as exc:
+                live_note = f"live market cap unavailable: {exc}"
+        try:
+            result = compare.compare(conn, args.symbols, args.horizon, tokens)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from exc
+        _out(result | {"live_data": live_note})
     elif c == "valuation":
         _out(run_valuation(conn, settings, args))
     elif c == "token":

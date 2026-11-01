@@ -96,6 +96,10 @@ Phase B: `valuation SYM --method multiple|reverse|relative|history` turns stated
 - **No assumption has a default.** `multiple` needs `--multiple`, `--growth`, `--years` and `--dilution`; `reverse` needs `--multiple`, `--years` and `--dilution`; `relative` needs `--peer` and `--fraction`; `history` takes `--horizon`.
 - Results are labelled conditional scenarios, never forecasts.
 
+Phase D: `compare COIN COIN ... [--horizon 365] [--no-live]` puts identical facts for 2–6 coins side by side, with the correlation of their daily returns.
+- It gives no scores and no ranking.
+- A zero-TVL DefiLlama family is flagged as not comparable.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
@@ -103,6 +107,10 @@ Research workflows:
   - Combines the BTC backdrop, technical-analyst with `plan`, fundamental-analyst with `token` and `valuation`, history, and a risk review.
   - It separates validated evidence, base rates and judgment, and never sizes positions.
   - Each conclusion is recorded anonymously (prediction plus recommendation); personal positions are never stored.
+- `/compare <COIN> <COIN> [short|swing|long]`: the same eight criteria for every coin, each with an evidence level.
+  - It ranks only when the evidence supports it; otherwise it says "no clear ranking".
+  - Every coin gets the same valuation assumptions, and L1s aren't set beside DeFi protocols.
+  - It records one anonymous prediction per coin.
 - `/learn-from <transcript or inbox/ file>`: a creator's rules become hypotheses and tests, and their calls are scored. Never store or scrape transcripts.
 - `/daily [unattended]`: the daily session. See `docs/usage.md`.
 - `/research <topic or coin>`: web research saved as cited claims.

@@ -478,6 +478,30 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.6: `/compare` (upgrade phase D)
+
+`compare.py` and `compare COIN COIN ... [--horizon 365] [--no-live]` put the same facts side by side for 2 to 6 coins:
+- structure, momentum and 90-day strength against BTC;
+- liquidity and universe membership;
+- DefiLlama fundamentals with a live market cap and dilution;
+- the coin's own return distribution and the 2R plan odds;
+- trials and judgment predictions on record;
+- the 365-day correlation of daily returns.
+
+It assigns no scores and no ranking. A DefiLlama family with zero TVL (e.g. one carrying chain-level fees) is flagged `market_cap_to_revenue_comparable: false`, so an L1's multiple isn't set beside a DeFi protocol's.
+
+The `/compare` skill evaluates every coin on the same eight criteria, each with an evidence level. It ranks only when the evidence supports a ranking and otherwise says "no clear ranking". The risk-reviewer checks comparability, and the skill records one anonymous prediction per coin plus a hypothesis claim.
+
+Also in this release:
+- A YAML error in the fundamental-analyst header had stopped that agent loading. `tests/test_claude_config.py` now parses every agent and skill header.
+
+Demo on 2026-11-01, `/compare ETH SOL long`: **no clear ranking** (predictions #68 and #69, claim #30). The risk review found that the draft's lean towards ETH came from three things:
+- unequal scenario inputs;
+- mismatched fee bases (30-day annualised against 1 year);
+- history windows from different eras.
+
+With identical inputs the two coins tie on bear and bull outcomes.
+
 ## v1.5: `/advise` (upgrade phase C)
 
 `/advise` gives a conclusion-first research assessment of an asset **at today's price**. Hold, average-down and take-profit questions are judged exactly like a fresh buy, so the entry price is context only.
