@@ -479,6 +479,19 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.8: `/learn-from` on the registry (learning upgrade phase B)
+
+`/learn-from` was rewritten around the registry:
+- **Sorting:** six knowledge types, each with one destination.
+- **Deduplication** with `hypothesis similar` before registering. A repeat becomes a mention.
+- **Neutral wording,** and a competing explanation with a benchmark for every important hypothesis.
+- **Historical observations** are checked on stored data and cited as commands with their data date.
+- **Gaps:** what our data lacks is marked `needs_data`, never approximated.
+- **Predictions:** exact calls go to `call add`; conditional ones go to `scenario add`, with our own criteria and no creator scoring.
+- **Blind testing:** quant-researcher gets only `hypothesis brief`, runs the hypothesis and a benchmark in family `hyp:<id>` (at most 6 trials a session), and reports against the benchmark.
+- **Review:** risk-reviewer has checks 18–22 (reputation and repetition, faithful neutral wording, hindsight, competing explanations, independence).
+- **The report** has the user's 9 sections, plus a cross-source note when several sources are processed together.
+
 ## v1.7: hypothesis registry (learning upgrade phase A)
 
 The user approved upgrading `/learn-from` into evidence-based learning from outside analysts (2026-11-01). Analysts influence which questions get investigated, not the conclusions. The design came from a pilot on one Benjamin Cowen video, with nothing stored (`reports/research/learn-2026-11-01-cowen-pilot.md`). The pilot found:
@@ -500,7 +513,7 @@ Migration 010 and `hypotheses.py` add:
 | `concepts` | Frameworks in our own words, how they're used, their limits | No status, so no path to validation |
 | `source_scenarios` | A source's conditional prediction plus the resolution criteria we wrote | Resolved once; never in `call score` |
 
-Phase B rewrites `/learn-from`, quant-researcher and risk-reviewer to use the registry. Until then, `/learn-from` still describes the old flow (claims and `learn:<creator>` families). Phases C (weekly definitions, `cycles`) and D (forward monitoring) follow, as approved.
+Phases C (weekly definitions, `cycles`) and D (forward monitoring) follow, as approved.
 
 ## v1.6: `/compare` (upgrade phase D)
 

@@ -27,8 +27,15 @@ You are the risk reviewer for the cryptoAgent research project (repo root is the
 16. **Missing disconfirmation:** what is the strongest evidence against the conclusion that the draft doesn't address?
 17. **Privacy:** does any recorded text (claims, prediction rationale, recommendation fields, the report) contain the user's holdings, entry price or personal situation? If so, that's a required change.
 
+### Also for `/learn-from` reports
+18. **Reputation and repetition:** is anything treated as more likely because of who said it, or because a creator said it repeatedly? Only distinct creators count as independent sources (`hypothesis show`), and even several sources aren't evidence that an idea works.
+19. **Neutral and faithful wording:** does each registered hypothesis say what the source said, with its qualifications and nothing stronger or weaker, and without naming the source? Was any hypothesis approximated into something testable that it doesn't say?
+20. **Hindsight:** are tests on data before the publication date presented as retrospective (in-sample for the source)? Is any imported old call or scenario presented as a forward success? Are historical analogs the source picked checked against the ones they left out?
+21. **Competing explanations:** does each important hypothesis have a plausible alternative and a benchmark, and was the benchmark actually run or checked?
+22. **Independence:** does the "what CryptoAgent learned" section say where the agent disagrees with the source? Does any recommendation, rule or strategy change because of the source rather than validated evidence?
+
 ## Rules
-- Use only `.venv/Scripts/python -m cryptoagent` read commands: `regime`, `indicators`, `patterns`, `trials list|families|show ID`, `predictions`, `candles`, `quality`, `markets`, `scan`. `trials show ID` has every stored result of a trial, including forward returns and cost sensitivity. Don't run backtests or record anything.
+- Use only `.venv/Scripts/python -m cryptoagent` read commands: `regime`, `indicators`, `patterns`, `trials list|families|show ID`, `predictions`, `candles`, `quality`, `markets`, `scan`, `hypothesis list|show|brief`, `concept list`, `scenario list`, `call list|score`. `trials show ID` has every stored result of a trial, including forward returns and cost sensitivity. Don't run backtests or record anything.
 - Don't invent numbers either. Any number you add must name its command.
 
 ## Report

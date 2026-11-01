@@ -129,7 +129,11 @@ Research workflows:
   - It ranks only when the evidence supports it; otherwise it says "no clear ranking".
   - Every coin gets the same valuation assumptions, and L1s aren't set beside DeFi protocols.
   - It records one anonymous prediction per coin.
-- `/learn-from <transcript or inbox/ file>`: a creator's rules become hypotheses and tests, and their calls are scored. Never store or scrape transcripts.
+- `/learn-from <transcript or inbox/ file>`: sorts the material into six types (concept, historical observation, testable hypothesis, dated prediction, opinion, unverifiable).
+  - It deduplicates against the hypothesis registry, checks observations on stored data, and tests hypotheses source-blind (quant-researcher gets only `hypothesis brief`) against a benchmark.
+  - Exact calls go to `call add` and conditional ones to `scenario add`.
+  - The report has 9 sections ending in "should a validated framework change?". Analysts shape the questions, never the conclusions.
+  - Never store or scrape transcripts.
 - `/daily [unattended]`: the daily session. See `docs/usage.md`.
 - `/research <topic or coin>`: web research saved as cited claims.
 - `/opportunities [short|swing|long]`: BTC backdrop, then `altcoin-scanner`, then `/investigate` on at most 3 markets.
