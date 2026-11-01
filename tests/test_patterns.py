@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from cryptoagent.quant import indicators as ind
 from cryptoagent.quant import patterns
 from cryptoagent.quant.series import to_4h, to_weekly
 
@@ -62,6 +63,76 @@ def test_squeeze_flags_unusually_narrow_bands():
     close = 100 * np.exp(np.cumsum(np.r_[rng.normal(0, 0.03, 420), rng.normal(0, 0.001, 30)]))
     signal = patterns.evaluate("squeeze", frame(close))
     assert signal.iloc[-1] and not signal.iloc[:385].any()  # needs 365 bars of bandwidth history
+
+
+def weekly_frame(weekly_closes, start="2020-01-06"):
+    """Daily bars where every day of week k closes at weekly_closes[k] (weeks start on Monday)."""
+    return frame(np.repeat(np.asarray(weekly_closes, dtype=float), 7), start=start)
+
+
+def test_weekly_fields_are_last_completed_week_only():
+    df = weekly_frame(np.arange(1.0, 31.0))
+    w = ind.weekly_on_daily(df)
+    assert np.isnan(w["w_close"].iloc[5])            # Saturday of week 1: no week completed yet
+    assert w["w_close"].iloc[6] == 1.0               # its Sunday close completes week 1
+    assert (w["w_close"].iloc[6:13] == 1.0).all()     # held from that Sunday through the next Saturday
+    assert w["w_close"].iloc[13] == 2.0
+    assert w["w_sma20"].iloc[20 * 7 - 1] == pytest.approx(np.mean(np.arange(1.0, 21.0)))
+
+
+def test_weekly_pivot_failure_fires_on_the_second_close_back_below():
+    # Rise to a weekly high of 100 (week 10), five lower weeks confirm it as a pivot, then a close
+    # above it (105), then two closes below (95, 95): fires on the Sunday ending week 18 only.
+    closes = np.r_[np.linspace(50, 95, 10), [100.0], np.full(5, 90.0), [105.0, 95.0, 95.0, 95.0]]
+    df = weekly_frame(closes)
+    signal = patterns.evaluate("weekly_pivot_failure", df)
+    assert list(signal[signal].index) == [df.index[19 * 7 - 1]]
+    one_below = weekly_frame(np.r_[closes[:18], [110.0, 110.0]])  # only one week below: no failure
+    assert not patterns.evaluate("weekly_pivot_failure", one_below).any()
+
+
+def test_band_touch_needs_four_weeks_clear_above_the_band():
+    close = np.linspace(50, 150, 300)
+    df = frame(close, low=close * 0.999)
+    top = ind.weekly_on_daily(df)["w_band_top"]
+    df.iloc[-1, df.columns.get_loc("low")] = top.iloc[-1] * 0.99   # today's low dips into the band
+    signal = patterns.evaluate("band_touch", df)
+    assert signal.iloc[-1] and signal.iloc[:-1].sum() == 0
+    df.iloc[-5, df.columns.get_loc("low")] = top.iloc[-5] * 0.99   # an earlier touch within 28 days
+    assert not patterns.evaluate("band_touch", df).iloc[-1]
+
+
+def test_long_sub200_reclaim_needs_180_days_below_a_falling_average():
+    falling = np.r_[np.full(250, 100.0), np.linspace(99, 50, 200)]
+    df = frame(np.r_[falling, [95.0]])                 # 200 closes below, SMA200 still falling, close jumps above
+    assert patterns.evaluate("long_sub200_reclaim", df).iloc[-1]
+    short = frame(np.r_[np.full(250, 100.0), np.linspace(99, 80, 100), [99.5]])  # only 100 days below
+    assert not patterns.evaluate("long_sub200_reclaim", short).any()
+
+
+def test_two_weekly_closes_below_sma52():
+    df = weekly_frame(np.r_[np.full(60, 100.0) + np.arange(60) * 0.1, [90.0, 90.0, 90.0]])
+    signal = patterns.evaluate("two_weekly_closes_below_sma52", df)
+    assert list(signal[signal].index) == [df.index[62 * 7 - 1]]
+
+
+def test_weekly_patterns_never_fire_on_weekly_bars():
+    weekly = to_weekly(weekly_frame(np.r_[np.linspace(50, 95, 10), [100.0], np.full(5, 90.0), [105.0, 95.0, 95.0]]))
+    assert not patterns.evaluate("weekly_pivot_failure", weekly.drop(columns="days")).any()
+
+
+def test_weekly_fields_have_no_lookahead():
+    rng = np.random.default_rng(3)
+    close = 100 * np.exp(np.cumsum(rng.normal(0.0005, 0.03, 900)))
+    df = frame(close, close * 1.02, close * 0.98)
+    cut = 700
+    reference = ind.weekly_on_daily(df).iloc[:cut + 1]
+    garbage = df.copy()
+    noise = rng.uniform(1, 1e6, size=len(df) - cut - 1)
+    for col in ("open", "close", "high", "low"):
+        garbage.iloc[cut + 1:, garbage.columns.get_loc(col)] = noise
+    pd.testing.assert_frame_equal(ind.weekly_on_daily(garbage).iloc[:cut + 1], reference)
+    pd.testing.assert_frame_equal(ind.weekly_on_daily(df.iloc[:cut + 1]), reference)
 
 
 @pytest.mark.parametrize("name", list(patterns.PATTERNS))

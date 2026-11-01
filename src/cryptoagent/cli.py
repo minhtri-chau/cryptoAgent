@@ -18,7 +18,7 @@ from cryptoagent import (backup, calls, coingecko, compare, db, digest, dossier,
 from cryptoagent.collectors import COLLECTORS
 from cryptoagent.config import load_settings
 from cryptoagent.predictions import LedgerError
-from cryptoagent.quant import analogs, indicators, ml, patterns, regime, universe
+from cryptoagent.quant import analogs, cycles, indicators, ml, patterns, regime, universe
 from cryptoagent.quant.backtest import Costs
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import UnknownMarket, load, load_daily
@@ -92,6 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("market", help="SOURCE:SYMBOL")
     p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
     p.add_argument("--timeframe", choices=["1h", "4h", "1d", "1w"], default="1d")
+
+    p = cmd.add_parser("cycles", help="descriptive cycle history: peaks and lows, long runs below SMA200, midterm years")
+    p.add_argument("market", help="SOURCE:SYMBOL")
+    p.add_argument("--as-of", help="YYYY-MM-DD: use only candles up to this day")
+    p.add_argument("--min-drawdown", type=float, default=0.5, help="drawdown from a peak that counts as a cycle")
+    p.add_argument("--min-days", type=int, default=180, help="consecutive closes below SMA200 that count as a run")
 
     p = cmd.add_parser("backtest", help="backtest one setup on a chronological period; always recorded as a trial")
     p.add_argument("--market", required=True,
@@ -533,6 +539,9 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         df = load(conn, args.market, args.timeframe, args.as_of)
         _out({"market": args.market, "timeframe": args.timeframe,
               "as_of": _bar_label(df.index[-1], args.timeframe) if len(df) else None, "patterns": patterns.active(df)})
+    elif c == "cycles":
+        _out({"market": args.market, **cycles.report(load_daily(conn, args.market, args.as_of), args.min_drawdown,
+                                                     args.min_days)})
     elif c == "backtest":
         spec = {"market": args.market, "pattern": args.pattern, "conditions": [parse_when(w) for w in args.when],
                 "exit": {"hold_days": args.hold, "stop_atr": args.stop_atr, "target_atr": args.target_atr}}

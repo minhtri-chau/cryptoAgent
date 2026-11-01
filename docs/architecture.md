@@ -479,6 +479,33 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.9: weekly definitions and `cycles` (learning upgrade phase C)
+
+Built only what the pilot and the first three videos needed. Log-regression bands and ETH/BTC are deferred.
+
+**Weekly fields on daily bars** (`indicators.weekly_on_daily`):
+- Each day carries the values of the last completed week (Monday to Sunday, known at the Sunday close): the 20-week SMA, 21-week EMA, 52-week SMA, band top, weekly pivot high, consecutive closes below it and below the 52-week SMA, and days since the last weekly pivot failure.
+- Plus `days_below_sma200`.
+- All are available as `--when` fields, and a test checks them for look-ahead.
+
+**Patterns:**
+- `weekly_pivot_failure`: a weekly close above the last weekly pivot high, then two closes back below it.
+- `band_touch`: the first daily low into the band after 28 days clear above it.
+- `long_sub200_reclaim`: the first close above a falling SMA200 after 180 or more closes below it.
+- `two_weekly_closes_below_sma52`.
+
+Each has a hand-worked test and is covered by the no-look-ahead test. Weekly-aware patterns don't fire on non-daily bars.
+
+**`cycles`:** a read-only history of peaks and lows, runs below SMA200, and midterm years. It replaces the ad-hoc queries used during the pilot. On BTC it reproduces every pilot number. It also shows that with a plain 50%-drawdown definition there are 6 complete cycles (61, 88, 406, 364, 98 and 378 days from peak to low), so the 364–406-day window rests on choosing three of them.
+
+**On BTC (2026-10-31):**
+- `weekly_pivot_failure` fired on 2026-10-25, 6 times ever.
+- `band_touch` fired on 2026-10-30, 26 times ever.
+- `long_sub200_reclaim` fired 4 times, the last on 2026-08-19.
+- `two_weekly_closes_below_sma52` fired 7 times.
+
+Hypotheses #8, #19 and #27 moved from `needs_data` back to `registered`, ready for blind tests. #9's predicted outcome (a lower low) still isn't a backtest metric.
+
 ## v1.8: `/learn-from` on the registry (learning upgrade phase B)
 
 `/learn-from` was rewritten around the registry:

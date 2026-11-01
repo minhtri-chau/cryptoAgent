@@ -147,6 +147,52 @@ def last_pivots(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
     return out
 
 
+def run_length(mask: pd.Series) -> pd.Series:
+    """Consecutive True values ending at each bar (0 where False)."""
+    mask = mask.fillna(False).astype(bool)
+    return mask.astype(int).groupby((~mask).cumsum()).cumsum()
+
+
+def is_daily(df: pd.DataFrame) -> bool:
+    return len(df) > 1 and pd.Series(df.index).diff().median() == pd.Timedelta(days=1)
+
+
+def weekly_on_daily(daily: pd.DataFrame) -> pd.DataFrame:
+    """Weekly indicators as known at each day's close: the values of the last completed week.
+
+    Weeks run Monday to Sunday (`series.to_weekly`), so a week is known at its Sunday close
+    and its values hold until the next Sunday. Days before the first completed week are NaN.
+    - w_close, w_sma20 (20-week SMA), w_ema21 (21-week EMA), w_sma52 (52-week SMA, our
+      definition of a "one-year moving average")
+    - w_band_top: the higher of w_sma20 and w_ema21 (the "bull market support band")
+    - w_pivot_high: the last weekly pivot high confirmed by that week (5 weeks either side)
+    - w_weeks_below_pivot_high / w_weeks_below_sma52: consecutive weekly closes below each
+    - w_pivot_failure_days_ago: days since the last `weekly_pivot_failure` (NaN if none yet)
+    """
+    from cryptoagent.quant.series import to_weekly  # series has no indicator dependency
+
+    weekly = to_weekly(daily)
+    close = weekly["close"]
+    w = pd.DataFrame(index=weekly.index)
+    w["w_close"] = close
+    w["w_sma20"] = sma(close, 20)
+    w["w_ema21"] = ema(close, 21)
+    w["w_sma52"] = sma(close, 52)
+    w["w_band_top"] = w[["w_sma20", "w_ema21"]].max(axis=1, skipna=False)
+    w["w_pivot_high"] = last_pivots(weekly, 5)["pivot_high"]
+    w["w_weeks_below_pivot_high"] = run_length(close < w["w_pivot_high"])
+    w["w_weeks_below_sma52"] = run_length(close < w["w_sma52"])
+    # A failed breakout: a weekly close above the pivot high, then two consecutive closes below it.
+    failure = (w["w_weeks_below_pivot_high"] == 2) & (close.shift(2) > w["w_pivot_high"])
+    w.index = w.index + pd.Timedelta(days=6)  # known at the week's Sunday close
+    out = w.reindex(daily.index, method="ffill") if len(w) else w.reindex(daily.index)
+    last_failure = pd.Series(w.index[failure.to_numpy()], index=w.index[failure.to_numpy()])
+    last_failure = last_failure.reindex(daily.index).ffill()
+    out["w_pivot_failure_days_ago"] = (pd.Series(daily.index, index=daily.index) - last_failure).dt.days
+    out["w_pivot_failure"] = pd.Series(failure.to_numpy(), index=w.index).reindex(daily.index).fillna(False).astype(bool)
+    return out
+
+
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
     """The standard indicator set used by reports, patterns and regime classification.
 

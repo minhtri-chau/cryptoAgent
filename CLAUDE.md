@@ -118,6 +118,22 @@ v1.7, learning upgrade phase A (the hypothesis registry, migration 010):
 - `concept add|source|list` keeps analytical frameworks, which are never promoted to rules.
 - `scenario add|resolve|list` records a source's conditional predictions, with resolution criteria we wrote. They are never scored as the creator's; exact calls still go to `call add`.
 
+v1.9, learning upgrade phase C (weekly definitions and `cycles`):
+- `cycles SOURCE:SYMBOL [--as-of] [--min-drawdown 0.5] [--min-days 180]` is a read-only cycle history:
+  - peaks and lows (a cycle is an all-time high followed by a drawdown of at least `--min-drawdown`);
+  - runs of at least `--min-days` closes below SMA200, and whether the run's low held for 365 days;
+  - US midterm years: Q1, summer and Q4 lows, the next cycle low, and the change 365 days after the election.
+- New patterns, on daily bars only:
+  - `weekly_pivot_failure`;
+  - `band_touch` (the higher of the 20-week SMA and the 21-week EMA);
+  - `long_sub200_reclaim`;
+  - `two_weekly_closes_below_sma52`.
+- New `--when` fields on daily bars:
+  - `days_below_sma200`;
+  - the last completed week's `w_close`, `w_sma20`, `w_ema21`, `w_sma52`, `w_band_top`, `w_pivot_high`, `w_weeks_below_pivot_high`, `w_weeks_below_sma52` and `w_pivot_failure_days_ago`.
+  
+  A week (Monday to Sunday) is known at its Sunday close.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:
