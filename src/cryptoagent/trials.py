@@ -13,7 +13,7 @@ import sqlite3
 
 import pandas as pd
 
-from cryptoagent.quant import analogs, backtest, ml, patterns, pooled, universe
+from cryptoagent.quant import accumulate, analogs, backtest, ml, patterns, pooled, universe
 from cryptoagent.quant.backtest import Costs, Exit
 from cryptoagent.quant.patterns import SpecError
 from cryptoagent.quant.series import load_daily
@@ -198,6 +198,18 @@ def run_ml_trial(conn: sqlite3.Connection, market: str, kind: str, horizon: int,
     norm = {"method": ml.MODELS[kind], "market": market, "horizon_days": int(horizon)}
     return _record_method_trial(conn, norm, period, family, hypothesis, created_by,
                                 lambda df, start: ml.evaluate(df, kind, horizon, start))
+
+
+def run_accumulation_trial(conn: sqlite3.Connection, market: str, rule: dict, period: str, family: str,
+                           hypothesis: str, created_by: str, cash_yield: float = 0.0, cost_factor: float = 1.0) -> dict:
+    """An accumulation rule (accumulate-v1) against lump sum over every start in the period, recorded as a trial."""
+    if cost_factor < 0 or cash_yield < 0:
+        raise SpecError("cost_factor and cash_yield must not be negative")
+    norm = {"method": accumulate.VERSION, "market": market, "rule": accumulate.normalise(rule),
+            "cash_yield": float(cash_yield), "cost_factor": float(cost_factor), "horizons_days": [365, 730]}
+    costs = Costs().scaled(cost_factor)
+    return _record_method_trial(conn, norm, period, family, hypothesis, created_by,
+                                lambda df, start: accumulate.evaluate(df, norm["rule"], start, costs, cash_yield))
 
 
 def list_trials(conn: sqlite3.Connection, family: str | None = None, limit: int = 50) -> list[dict]:

@@ -143,6 +143,22 @@ v1.10, learning upgrade phase D (forward monitoring):
   - A retired hypothesis's monitors stop.
 - The report's "Outside ideas under watch" section lists the monitors and the open source scenarios.
 
+v1.11, accumulation rules (research only):
+- `accumulate evaluate --market --rule '<json>' --period train|validation [--cash-yield] [--cost-factor] --family --hypothesis --by` runs `accumulate-v1`.
+- **The rule kinds:**
+  - `lump`;
+  - `time` (weekly tranches);
+  - `ladder` (levels below the start, optional deadline);
+  - `hybrid` (initial amount, levels, a rally trigger and a deadline).
+- **How it's evaluated:**
+  - every weekly start in the period, against lump sum;
+  - decisions use the close and fill at the next open with fees;
+  - cash can earn a yield;
+  - results are grouped by a 60-day outcome label: A is a deep fall to a new cycle low, B a deep fall that holds the low, C no deep fall;
+  - probability-weighted medians are included.
+- Always recorded as a trial; the test period is never used.
+- These are research on rules, not sizing advice; the agent still never sizes the user's positions.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:

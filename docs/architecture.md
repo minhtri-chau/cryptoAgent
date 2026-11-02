@@ -479,6 +479,21 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.11: accumulation rules (`accumulate-v1`)
+
+The user asked how a fixed, hypothetical amount could be accumulated into BTC over 12–24 months without deploying everything before a big decline or holding too much cash into a rally.
+
+**Decision (2026-11-01, user):** this is treated as a **research comparison of accumulation rules**. The best rule's levels and percentages appear as a tested rule specification, labelled hypothetical research, never as advice for the user's capital. The no-sizing rule stands. Every variant is recorded as a trial; the sealed test period is never read.
+
+**What `quant/accumulate.py` does:**
+- simulates `lump`, `time`, `ladder` and `hybrid` rules from every weekly start;
+- decides on the close and fills at the next open with placeholder fees and slippage;
+- accrues a yield on cash;
+- compares each rule with lump sum at 365 and 730 days;
+- reports average cost, deployment pace, "missed rally" (a +25% close within 12 weeks while less than 50% was deployed), portfolio drawdown, and results by A/B/C outcome class with probability-weighted medians.
+
+`trials.run_accumulation_trial` records it through `_record_method_trial`, like the ML and analog trials.
+
 ## v1.10: forward monitoring (learning upgrade phase D)
 
 An analyst's history is in-sample for them, so the only clean evidence about their idea comes after it's registered. Migration 011 and `monitors.py` add that evidence:

@@ -368,6 +368,18 @@ def build_parser() -> argparse.ArgumentParser:
     mo.add_parser("list")
     mo.add_parser("run", help="record a prediction for every monitor whose signal is active today (daily task)")
 
+    acc = cmd.add_parser("accumulate", help="accumulation rules vs lump sum over history (accumulate-v1); trials"
+                         ).add_subparsers(dest="action", required=True)
+    p = acc.add_parser("evaluate", help="run one rule over every start in a period; always recorded as a trial")
+    p.add_argument("--market", required=True)
+    p.add_argument("--rule", required=True, help='JSON, e.g. {"kind": "time", "tranches": 12}')
+    p.add_argument("--period", required=True, choices=list(trials.PERIODS))
+    p.add_argument("--cash-yield", type=float, default=0.0, help="yearly yield on uninvested cash, e.g. 0.039")
+    p.add_argument("--cost-factor", type=float, default=1.0, help="multiply placeholder fees and slippage")
+    p.add_argument("--family", required=True)
+    p.add_argument("--hypothesis", required=True)
+    p.add_argument("--by", required=True)
+
     p = cmd.add_parser("baseline", help="forward returns on days meeting conditions vs all days (train/validation)")
     p.add_argument("--market", required=True)
     p.add_argument("--horizon", type=int, required=True)
@@ -731,6 +743,13 @@ def run(args, conn: sqlite3.Connection, settings) -> None:
         _out(monitors.list_monitors(conn))
     elif c == "monitor" and args.action == "run":
         _out(monitors.run(conn))
+    elif c == "accumulate" and args.action == "evaluate":
+        try:
+            rule = json.loads(args.rule)
+        except json.JSONDecodeError as exc:
+            raise UsageError(f"--rule is not valid JSON: {exc}") from exc
+        _out(trials.run_accumulation_trial(conn, args.market, rule, args.period, args.family, args.hypothesis, args.by,
+                                           args.cash_yield, args.cost_factor))
     elif c == "baseline":
         _out(monitors.conditional_baseline(conn, args.market, args.horizon, [parse_when(w) for w in args.when],
                                            args.period))
