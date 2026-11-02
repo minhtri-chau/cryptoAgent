@@ -122,7 +122,8 @@ def _method_section(conn) -> list[str]:
     rows = conn.execute(
         "SELECT id, json_extract(spec, '$.method'), market, period, json_extract(spec, '$.horizon_days'),"
         " json_extract(results, '$.brier_skill_vs_base'), json_extract(results, '$.brier_diff_ci90'), trades"
-        " FROM trials WHERE json_extract(spec, '$.method') IS NOT NULL ORDER BY id").fetchall()
+        " FROM trials WHERE json_extract(spec, '$.method') IS NOT NULL"
+        " AND json_extract(spec, '$.horizon_days') IS NOT NULL ORDER BY id").fetchall()   # forecasters only, not accumulate-v1
     lines = ["## Forecasting methods vs the base rate", ""]
     if not rows:
         return lines + ["No method has been evaluated yet: analogues and ML models are unvalidated."]

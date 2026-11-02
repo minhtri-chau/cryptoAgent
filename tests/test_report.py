@@ -46,3 +46,18 @@ def test_scorecard_rows_name_their_market(conn):
     rows = [line for line in report._scorecard_section(conn) if "base_rate_v1" in line]
     assert len(rows) == 2
     assert rows[0].startswith("| coinbase:BTC/USD |") and rows[1].startswith("| coinbase:ETH/USD |")
+
+
+def test_method_table_lists_forecasters_but_not_accumulation_rules(conn):
+    """Accumulation rules have no horizon or Brier score; listing them there printed "Noned" rows."""
+    def trial(spec):
+        with conn:
+            conn.execute("INSERT INTO trials (created_by, family, hypothesis, spec, spec_hash, market, period,"
+                         " period_start, period_end, data_through, costs, trades, mean_return, results)"
+                         " VALUES ('claude', 'f', 'h', ?, ?, 'bitstamp:BTC/USD', 'train', '2015-01-01',"
+                         " '2021-12-31', '2021-12-31', '{}', 10, NULL, '{}')", (spec, spec))
+    trial('{"method": "analog-v1", "horizon_days": 30}')
+    trial('{"method": "accumulate-v1", "rule": {"kind": "lump"}}')
+    text = "\n".join(report._method_section(conn))
+    assert "| analog-v1 |" in text and "| 30d |" in text
+    assert "accumulate-v1" not in text and "Noned" not in text
