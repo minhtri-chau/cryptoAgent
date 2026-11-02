@@ -99,5 +99,7 @@ def test_conditional_baseline_never_reads_the_test_period(conn):
     assert everything["matching_days"] == everything["all_days"]
     up = monitors.conditional_baseline(conn, market, 30, [{"field": "close", "op": ">", "value": 150.0}], "train")
     assert up["matching_days"]["days"] < up["all_days"]["days"]
+    q = everything["all_days"]  # the distribution, not just its mean: p10 <= median <= p90
+    assert q["p10"] <= q["p25"] <= q["p50"] <= q["p75"] <= q["p90"]
     last_day = pd.Timestamp("2021-12-31") - pd.Timedelta(days=30)
     assert up["all_days"]["days"] == len(pd.date_range("2018-01-01", last_day))  # windows end by the period end

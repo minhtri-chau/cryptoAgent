@@ -57,7 +57,9 @@ def conditional_baseline(conn: sqlite3.Connection, market: str, horizon: int, co
     fwd, on = backtest.forward_series(df, mask, horizon, pd.Timestamp(start) if start else None)
     stats = lambda x: {"days": int(len(x)), "approx_independent": int(len(x)) // horizon,
                        "share_up": round(float((x > 0).mean()), 4) if len(x) else None,
-                       "mean_return": round(float(x.mean()), 6) if len(x) else None}
+                       "mean_return": round(float(x.mean()), 6) if len(x) else None,
+                       **({f"p{q}": round(float(x.quantile(q / 100)), 6) for q in (10, 25, 50, 75, 90)} if len(x)
+                          else {})}
     return {"market": market, "period": period, "horizon_days": horizon, "conditions": conditions,
             "matching_days": stats(fwd[on]), "all_days": stats(fwd),
             "note": "overlapping windows: days overstate the independent evidence; descriptive, not a trial"}
