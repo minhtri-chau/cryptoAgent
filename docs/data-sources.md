@@ -41,6 +41,27 @@ Checked 2026-10-30 on [fred.stlouisfed.org/legal](https://fred.stlouisfed.org/le
 
 **Decision (2026-10-30): skip macro for now.** Originally pending: this project stores data by design, for reproducibility and point-in-time correctness, so no FRED collector is built until either FRED gives written consent or the user chooses another approach.
 
+## US equity indices (S&P 500, Nasdaq): no usable free source
+
+Checked 2026-11-01. The goal was daily history from 2014, stored locally, for registry hypotheses #14, #33, #38 and #43 (and #28 for the Nasdaq). **Every free source's terms either forbid storage, can't backfill, or couldn't be read.**
+
+| Source | Gives (free) | Terms on local storage | Status |
+|---|---|---|---|
+| FRED SP500 / NASDAQCOM | Index, daily | "Copyrighted, pre-approval required"; FRED forbids storing without written consent | **Blocked by terms** (2026-10-30) |
+| Yahoo Finance / yfinance | Index and ETFs, deep history | [Terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) ban automated collection and creating "any database, archive"; the developer API terms require deleting non-storable data within 24 hours | **Prohibited** |
+| Tiingo Starter (free) | SPY/QQQ EOD, 30+ years | [ToS](https://app.tiingo.com/tos) §1.6(a), updated 2026-10-06: may not "save, archive... or otherwise retain" data, including in local databases. Paid plans may store only while subscribed | **Prohibited** on free |
+| Massive (Polygon) free | EOD, 2 years | [Market data terms](https://massive.com/legal/market-data-terms-of-service): "strictly for display use only"; no copying | **Prohibited** (and too short) |
+| Financial Modeling Prep | — | [ToS](https://site.financialmodelingprep.com/terms-of-service): no copying or downloading without written approval | **Prohibited** |
+| Twelve Data free | — | [Terms](https://twelvedata.com/terms): no storage "beyond permitted timeframes" in the docs (not read) | Undetermined |
+| Alpha Vantage free | SPY/QQQ only (index data is premium); about 100 recent days ("full" history is premium); 25 requests a day | [ToS](https://www.alphavantage.co/terms_of_service/): personal, non-commercial; storage **not addressed** | Allowed for a forward record only. **No backfill** |
+| Stooq | ^SPX CSV | Terms page not found; site behind a bot check; an API key is reportedly required since March 2026 | **Blocked**: the user would need to read the terms in a browser |
+| Nasdaq Data Link | No confirmed free US index dataset | Bot-blocked | **Blocked** |
+| Shiller / datahub.io | S&P **monthly** averages | Shiller: no licence stated. datahub labels its data PDDL, but rows after 2023-06 come from FRED's copyrighted series | Monthly only; licence unclear |
+
+Third-party copies of S&P Dow Jones Indices' terms (not read on S&P's own site) restrict storing index data without consent. No source says an ETF proxy such as SPY avoids that.
+
+**Decision (2026-11-01): keep waiting.** The equity-dependent hypotheses stay `needs_data`. There's no Alpha Vantage forward record, no live-only fetch and no paid plan. Revisit if a source with storage-friendly terms appears, or if the user reads Stooq's terms.
+
 ## Observed behaviour (live runs, 2026-10-30)
 
 - Coinbase and Bitstamp both return the **in-progress UTC day** as a candle. Collectors store only completed days.
