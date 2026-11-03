@@ -16,7 +16,7 @@ from collections.abc import Callable
 import pandas as pd
 
 from cryptoagent.quant import indicators as ind
-from cryptoagent.quant import regime
+from cryptoagent.quant import logband, regime
 
 
 def _breakout(n: int) -> Callable[[pd.DataFrame, pd.DataFrame], pd.Series]:
@@ -139,15 +139,17 @@ def evaluate(name: str, df: pd.DataFrame, indicators: pd.DataFrame | None = None
     return PATTERNS[name](df, i).fillna(False).astype(bool)
 
 
-def fields(df: pd.DataFrame) -> pd.DataFrame:
+def fields(df: pd.DataFrame, market: str | None = None) -> pd.DataFrame:
     """Every field a condition can refer to: indicators, regime-v1 columns and, on daily bars,
-    `days_below_sma200` and the last completed week's fields (`weekly_on_daily`)."""
+    `days_below_sma200`, the last completed week's fields (`weekly_on_daily`) and the
+    point-in-time log-regression band (`logband.fit`, anchored by `market`)."""
     indicators = ind.compute_all(df)
     labels = regime.classify(df)
     out = indicators.join(labels.drop(columns=[c for c in labels.columns if c in indicators.columns]))
     if ind.is_daily(df):
         out["days_below_sma200"] = ind.run_length(df["close"] < indicators["sma200"])
         out = out.join(ind.weekly_on_daily(df).drop(columns="w_pivot_failure"))
+        out = out.join(logband.fit(df["close"], logband.anchor_for(market) if market else None))
     return out
 
 
@@ -165,10 +167,10 @@ def condition_mask(condition: dict, index: pd.DatetimeIndex, load: Callable[[str
         raise SpecError(f"unknown op {condition['op']!r}; use one of {', '.join(OPS)}")
     market = condition.get("market", own_market)
     if fields_cache is None:
-        table = fields(load(market))
+        table = fields(load(market), market)
     else:
         if market not in fields_cache:
-            fields_cache[market] = fields(load(market))
+            fields_cache[market] = fields(load(market), market)
         table = fields_cache[market]
     if condition["field"] not in table.columns:
         raise SpecError(f"unknown field {condition['field']!r}; known: {', '.join(table.columns)}")

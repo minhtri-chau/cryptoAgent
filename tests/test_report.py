@@ -61,3 +61,9 @@ def test_method_table_lists_forecasters_but_not_accumulation_rules(conn):
     text = "\n".join(report._method_section(conn))
     assert "| analog-v1 |" in text and "| 30d |" in text
     assert "accumulate-v1" not in text and "Noned" not in text
+
+
+def test_log_band_rows_say_unavailable_without_enough_history(conn):
+    """A missing or too-short series must read 'unavailable', never a band fitted on too little data."""
+    lines = report._logband_section(conn)
+    assert sum("unavailable" in line for line in lines) == len(report.LOGBAND_ROWS)

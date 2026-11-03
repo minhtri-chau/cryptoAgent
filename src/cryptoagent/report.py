@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptoagent import calls, hypotheses, monitors, predictions, quality, recommendations, strategies
-from cryptoagent.quant import analogs, indicators, regime, universe
+from cryptoagent.quant import analogs, indicators, logband, regime, universe
 from cryptoagent.quant.series import UnknownMarket, load_daily
 
 REGIME_MARKET = "bitstamp:BTC/USD"   # one venue back to 2011, for cycle context
@@ -34,6 +34,8 @@ def _fmt(value, kind="num") -> str:
         return f"{value:.1%}"
     if kind == "price":
         return f"{value:,.2f}"
+    if kind == "ratio":
+        return f"{value:.5f}"
     return f"{value:,.2f}" if isinstance(value, float) else str(value)
 
 
@@ -147,6 +149,35 @@ def _indicator_section(conn) -> list[str]:
     last = indicators.compute_all(df).iloc[-1]
     lines = [f"## Bitcoin indicators ({TRADE_MARKET}, as of {df.index[-1].date()})", "", "| Indicator | Value |", "|---|---|"]
     lines += [f"| {label} | {_fmt(last[col], kind)} |" for col, label, kind in INDICATOR_ROWS]
+    return lines
+
+
+LOGBAND_ROWS = [("BTC", REGIME_MARKET, None), ("ETH", "coinbase:ETH/USD", None),
+                ("ETH/BTC", "coinbase:ETH/USD", TRADE_MARKET)]
+
+
+def _logband_section(conn) -> list[str]:
+    lines = [f"## Long-term log regression ({logband.VERSION})", "",
+             "log10(close) fitted on log10(days since genesis), using only closes up to each day; bands are "
+             "+/-1 and 2 standard deviations of the fit's residuals. Descriptive: whether band touches predict "
+             "returns is untested.", "",
+             "| Series | Close | -2 sd | -1 sd | Middle | +1 sd | +2 sd | z | First band day |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for label, market, vs in LOGBAND_ROWS:
+        try:
+            df = load_daily(conn, market)
+            close = logband.ratio(df, load_daily(conn, vs)) if vs else df["close"]
+        except UnknownMarket:
+            lines.append(f"| {label} | unavailable | | | | | | | |")
+            continue
+        bands = logband.fit(close, logband.anchor_for(market)).dropna()
+        if bands.empty:
+            lines.append(f"| {label} | unavailable: under {logband.MIN_DAYS} closes | | | | | | | |")
+            continue
+        b, kind = bands.iloc[-1], "ratio" if vs else "price"
+        cells = [_fmt(close.iloc[-1], kind)] + [_fmt(b[c], kind) for c in
+                                                 ("lb_lower2", "lb_lower1", "lb_mid", "lb_upper1", "lb_upper2")]
+        lines.append(f"| {label} | {' | '.join(cells)} | {b['lb_z']:+.2f} | {bands.index[0].date()} |")
     return lines
 
 
@@ -280,7 +311,7 @@ def render(conn: sqlite3.Connection) -> str:
         [f"# Daily market report", "", f"Generated {now}. Deterministic output: every number comes from stored data "
          "and the code in this repository; there is no AI interpretation here. Not financial advice."],
         _data_section(conn), _regime_section(conn), _analog_section(conn), _method_section(conn),
-        _indicator_section(conn),
+        _indicator_section(conn), _logband_section(conn),
         _predictions_section(conn),
         _scorecard_section(conn), _recommendations_section(conn), _creators_section(conn), _hypotheses_section(conn),
         _strategies_section(conn),

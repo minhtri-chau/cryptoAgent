@@ -159,6 +159,12 @@ v1.11, accumulation rules (research only):
 - Always recorded as a trial; the test period is never used.
 - These are research on rules, not sizing advice; the agent still never sizes the user's positions.
 
+v1.12, long-term log-regression bands (`logband-v1`):
+- `bands SOURCE:SYMBOL [--vs SOURCE:SYMBOL] [--as-of] [--last N]`: log10(close) fitted by OLS on log10(days since genesis; BTC 2009-01-03, ETH 2015-07-30, otherwise the first candle), with bands at ±1 and ±2 standard deviations of the fit's residuals. `--vs` fits a ratio (e.g. ETH/BTC).
+- **Point-in-time:** the fit is redone each day on closes up to that day, so past touches don't use later prices (charts fitted once over all history do). Nothing before 1,095 closes.
+- `lb_z`, `lb_mid`, `lb_lower1|2` and `lb_upper1|2` are `--when` fields on daily bars. The report has a section for BTC (Bitstamp), ETH and ETH/BTC.
+- Descriptive only: whether band touches predict returns is untested. Changing the definition means a new version that the user approves.
+
 Maintenance: `backup [--dir] [--keep 14]` runs nightly in the daily task. It refuses the work OneDrive.
 
 Research workflows:

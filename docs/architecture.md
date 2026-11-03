@@ -479,6 +479,16 @@ The user chose to interact with the agent daily, so v1.0 makes the interactive s
 4. The optional headless runner exists, is off by default, and is documented as untested.
 5. `docs/usage.md` explains the daily routine and the decisions only the user makes.
 
+## v1.12: long-term log-regression bands (`logband-v1`)
+
+The user asked for regression bands on BTC and ETH as a research input. Hypothesis #45 (ETH touching the lower band at lows) was waiting on exactly this.
+
+- **Definition** (`quant/logband.py`): OLS of log10(close) on log10(days since genesis), with BTC anchored on 2009-01-03, ETH on 2015-07-30, and anything else on its first candle. The middle is the fitted line; the bands are ±1 and ±2 standard deviations of that fit's residuals, and `lb_z` is today's residual in those units.
+- **Point-in-time:** running sums refit the line each day on closes known that day. A test corrupts the future and checks the past is unchanged. A once-over-all-history fit (as on most charts) makes past touches look perfect by construction; that's alternative #16 on #41.
+- **Coverage:** the first band needs 1,095 closes, so BTC (Bitstamp) starts 2014-08-16, and ETH and ETH/BTC (Coinbase, from 2016-05-18) start 2019-05-19. ETH's 2015–2018 lows can't be checked.
+- **Uses:** `bands` command, `--when` fields (`lb_z` etc.), and a report section. BTC dominance is still unavailable (no free history).
+- **Limits:** a straight line in log-log space with symmetric bands; early bubbles widen σ, so later lows sit closer to the middle in z. Descriptive, untested, a few cycles.
+
 ## v1.11: accumulation rules (`accumulate-v1`)
 
 The user asked how a fixed, hypothetical amount could be accumulated into BTC over 12–24 months without deploying everything before a big decline or holding too much cash into a rally.
@@ -516,7 +526,7 @@ An analyst's history is in-sample for them, so the only clean evidence about the
 
 ## v1.9: weekly definitions and `cycles` (learning upgrade phase C)
 
-Built only what the pilot and the first three videos needed. Log-regression bands and ETH/BTC are deferred.
+Built only what the pilot and the first three videos needed. Log-regression bands and ETH/BTC were deferred; they arrived in v1.12.
 
 **Weekly fields on daily bars** (`indicators.weekly_on_daily`):
 - Each day carries the values of the last completed week (Monday to Sunday, known at the Sunday close): the 20-week SMA, 21-week EMA, 52-week SMA, band top, weekly pivot high, consecutive closes below it and below the 52-week SMA, and days since the last weekly pivot failure.
