@@ -5,7 +5,9 @@
 param([string]$At = "9:00PM")
 
 $script = Join-Path $PSScriptRoot "collect_daily.cmd"
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$script`""
+# Headless console: no window appears, so it can't be closed mid-run (that killed the 2026-11-05 run
+# with 0xC000013A). Output still goes to data\logs\collect.log.
+$action = New-ScheduledTaskAction -Execute "conhost.exe" -Argument "--headless cmd.exe /c `"$script`""
 $trigger = New-ScheduledTaskTrigger -Daily -At $At
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
